@@ -41,6 +41,7 @@ class FakeS3Client {
     readonly commands: unknown[] = [];
     destroyCalls = 0;
     deleteFailuresRemaining = 0;
+    putFailuresAfterWriteRemaining = 0;
     private revision = 0;
 
     object(bucket: string, key: string): FakeObject | undefined {
@@ -76,6 +77,10 @@ class FakeS3Client {
                 lastModified: new Date('2026-07-22T00:00:00Z'),
                 metadata: command.input.Metadata
             });
+            if (this.putFailuresAfterWriteRemaining > 0) {
+                this.putFailuresAfterWriteRemaining -= 1;
+                throw s3Error('RequestTimeout', 408);
+            }
             return { ETag: etag };
         }
         if (command instanceof GetObjectCommand) {
@@ -296,6 +301,77 @@ test('S3 object storage validates checksums and rejects unsafe logical keys', as
     assert.equal(client.commands.length, 0);
     await assert.rejects(storage.get('../secret'), /Invalid object key/);
     await assert.rejects(storage.list('uploads//news/'), /Invalid object key/);
+});
+
+test('S3 object storage removes a write when PutObject times out after persistence', async (t) => {
+    const { client, compensation, connection, state, storage } = await fixture(t);
+    const key = 'uploads/news/original/timed-out.webp';
+    client.putFailuresAfterWriteRemaining = 1;
+    client.deleteFailuresRemaining = 1;
+
+    await assert.rejects(
+        storage.put(key, new Uint8Array([1, 2, 3])),
+        /RequestTimeout/
+    );
+
+    const put = client.commands.find((command) => command instanceof PutObjectCommand);
+    const deletion = client.commands.find((command) => command instanceof DeleteObjectCommand);
+    assert.ok(put instanceof PutObjectCommand);
+    assert.ok(deletion instanceof DeleteObjectCommand);
+    assert.equal(deletion.input.Key, put.input.Key);
+    assert.equal(client.hasObject('ims-media-prod', put.input.Key!), true);
+
+    const operation = await connection.prepare(
+        'SELECT object_id, physical_key, state FROM s3_upload_operations WHERE logical_key=?'
+    ).bind(key).first<{
+        object_id: string;
+        physical_key: string;
+        state: string;
+    }>();
+    assert.ok(operation);
+    assert.equal(operation.physical_key, put.input.Key);
+    assert.equal(operation.state, 'deleted');
+    assert.equal(await state.isObjectReferenced(operation.object_id), false);
+
+    const cleanup = await connection.prepare(
+        `SELECT payload_json, state FROM s3_compensation_jobs
+         WHERE kind='delete-s3-object'`
+    ).first<{ payload_json: string; state: string }>();
+    assert.ok(cleanup);
+    assert.equal(cleanup.state, 'pending');
+    assert.deepEqual(JSON.parse(cleanup.payload_json), {
+        objectId: operation.object_id,
+        physicalKey: operation.physical_key,
+        storageScope: 'public'
+    });
+
+    await compensation.run(storage);
+    assert.equal(client.hasObject('ims-media-prod', put.input.Key!), false);
+    assert.equal((await connection.prepare(
+        'SELECT state FROM s3_compensation_jobs WHERE kind=?'
+    ).bind('delete-s3-object').first<{ state: string }>())?.state, 'completed');
+});
+
+test('S3 object storage keeps owner tokens out of user metadata', async (t) => {
+    const { client, state, storage } = await fixture(t);
+    const key = 'chronicle/media/pending/private.webp';
+    await storage.put(key, new Uint8Array([4, 5, 6]), {
+        ownerToken: 'owner-secret',
+        metadata: {
+            classification: 'internal',
+            OwnerToken: 'metadata-secret'
+        }
+    });
+
+    const snapshot = await state.snapshot(key);
+    assert.ok(snapshot);
+    assert.equal(snapshot.ownerToken, 'owner-secret');
+    const metadata = client.object('ims-media-prod', snapshot.physicalKey!)?.metadata;
+    assert.equal(metadata?.classification, 'internal');
+    assert.equal(
+        Object.keys(metadata || {}).some((name) => name.toLowerCase() === 'ownertoken'),
+        false
+    );
 });
 
 test('S3 physical keys support both an optional custom prefix and no prefix', () => {

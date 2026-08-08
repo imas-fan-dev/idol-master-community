@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnvironment } from "@/app";
 import type { RateLimitIdentity } from "@/ports/cache";
@@ -8,6 +9,7 @@ export interface RateLimitOptions {
   limit: number;
   windowSeconds: number;
   identity?: RateLimitIdentity;
+  rateLimitKey?: string;
 }
 
 export const GLOBAL_REQUEST_LIMIT = {
@@ -20,6 +22,48 @@ export const AUTH_LOGIN_LIMIT = {
   bucket: "auth-login",
   limit: 20,
   windowSeconds: 15 * 60,
+} as const;
+
+export const PLATFORM_AUTH_REFRESH_LIMIT = {
+  bucket: "platform-auth-refresh",
+  limit: 120,
+  windowSeconds: 15 * 60,
+} as const;
+
+export const PLATFORM_AUTH_LOGIN_LIMIT = {
+  bucket: "platform-auth-login",
+  limit: 20,
+  windowSeconds: 15 * 60,
+} as const;
+
+export const PLATFORM_AUTH_LOGIN_ACCOUNT_LIMIT = {
+  bucket: "platform-auth-login-account",
+  limit: 50,
+  windowSeconds: 15 * 60,
+} as const;
+
+const PLATFORM_LOGIN_ACCOUNT_KEY_DOMAIN =
+  "imsweb:platform-auth:login-account:v1\0";
+
+export function platformLoginAccountRateLimitKey(
+  normalizedEmail: string,
+): string {
+  return createHash("sha256")
+    .update(PLATFORM_LOGIN_ACCOUNT_KEY_DOMAIN)
+    .update(normalizedEmail)
+    .digest("hex");
+}
+
+export const PLATFORM_AUTH_REGISTER_LIMIT = {
+  bucket: "platform-auth-register",
+  limit: 10,
+  windowSeconds: 60 * 60,
+} as const;
+
+export const PLATFORM_AUTH_EMAIL_VERIFICATION_LIMIT = {
+  bucket: "platform-auth-email-verification",
+  limit: 10,
+  windowSeconds: 60 * 60,
 } as const;
 
 export const REACTION_LIMIT = {
@@ -37,6 +81,30 @@ export const CHRONICLE_UPLOAD_ATTEMPT_LIMIT = {
 export const CHRONICLE_UPLOAD_WRITE_LIMIT = {
   bucket: "chronicle-upload-write",
   limit: 30,
+  windowSeconds: 60 * 60,
+} as const;
+
+export const FUDABA_UPLOAD_ATTEMPT_LIMIT = {
+  bucket: "fudaba-upload-attempt",
+  limit: 60,
+  windowSeconds: 60 * 60,
+} as const;
+
+export const FUDABA_WRITE_ATTEMPT_LIMIT = {
+  bucket: "fudaba-write-attempt",
+  limit: 240,
+  windowSeconds: 60 * 60,
+} as const;
+
+export const FUDABA_MAP_READ_LIMIT = {
+  bucket: "fudaba-map-ip",
+  limit: 300,
+  windowSeconds: 15 * 60,
+} as const;
+
+export const FUDABA_LOCATION_WRITE_LIMIT = {
+  bucket: "fudaba-location-ip",
+  limit: 60,
   windowSeconds: 60 * 60,
 } as const;
 
@@ -91,7 +159,7 @@ export async function enforceRateLimit(
   if (!limiter) return null;
   const result = await limiter.consume(
     options.bucket,
-    getClientAddress(c),
+    options.rateLimitKey ?? getClientAddress(c),
     options.limit,
     options.windowSeconds,
     options.identity,
@@ -109,8 +177,61 @@ function requestSpecificLimit(
   pathname: string,
 ): RateLimitOptions | null {
   if (
+    method === "GET" &&
+    (pathname === "/api/community/exchange/map/config" ||
+      pathname === "/api/community/exchange/map/offices")
+  ) {
+    return FUDABA_MAP_READ_LIMIT;
+  }
+  if (
+    ["PUT", "DELETE"].includes(method) &&
+    /^\/api\/community\/exchange\/me\/offices\/[^/]+\/location$/.test(
+      pathname,
+    )
+  ) {
+    return FUDABA_LOCATION_WRITE_LIMIT;
+  }
+  if (
+    (method === "PUT" && (
+      pathname.startsWith("/api/community/exchange/uploads/") ||
+      /^\/api\/community\/exchange\/me\/offices\/[^/]+\/cover$/.test(
+        pathname,
+      )
+    )) ||
+    (method === "POST" && pathname === "/api/community/exchange/cards")
+  ) {
+    return FUDABA_UPLOAD_ATTEMPT_LIMIT;
+  }
+  if (
+    ["POST", "PUT", "DELETE"].includes(method) &&
+    (pathname === "/api/platform/me" ||
+      pathname.startsWith("/api/community/exchange/"))
+  ) {
+    return FUDABA_WRITE_ATTEMPT_LIMIT;
+  }
+  if (
     method === "POST" &&
-    (pathname === "/api/login" || pathname === "/api/admin/login")
+    pathname === "/api/platform/auth/refresh"
+  ) {
+    return PLATFORM_AUTH_REFRESH_LIMIT;
+  }
+  if (method === "POST" && pathname === "/api/platform/auth/login") {
+    return PLATFORM_AUTH_LOGIN_LIMIT;
+  }
+  if (method === "POST" && pathname === "/api/platform/auth/register") {
+    return PLATFORM_AUTH_REGISTER_LIMIT;
+  }
+  if (
+    method === "POST" &&
+    pathname === "/api/platform/auth/register/verification-code"
+  ) {
+    return PLATFORM_AUTH_EMAIL_VERIFICATION_LIMIT;
+  }
+  if (
+    method === "POST" &&
+    ["/api/login", "/api/admin/login", "/api/admin/auth/login"].includes(
+      pathname,
+    )
   ) {
     return AUTH_LOGIN_LIMIT;
   }

@@ -43,6 +43,17 @@ describe("ImageLoadingIndicator", () => {
     expect(image).not.toHaveAttribute("aria-busy")
   })
 
+  it("keeps decorative loading images out of the accessibility tree", () => {
+    const image = createImage({ complete: false })
+    image.alt = ""
+    document.body.append(image)
+
+    render(<ImageLoadingIndicator />)
+
+    expect(image).toHaveAttribute("data-image-state", "loading")
+    expect(image).not.toHaveAttribute("aria-busy")
+  })
+
   it("observes dynamically inserted images and stops animation on errors", async () => {
     render(<ImageLoadingIndicator />)
     const image = createImage({ complete: false })

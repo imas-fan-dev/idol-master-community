@@ -18,7 +18,7 @@ function requestDetails(call: unknown[]) {
 
 describe("StoryCoverAssetDialog", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=story-cover-asset-test; path=/"
+    document.cookie = "ims_admin_csrf=story-cover-asset-test; path=/"
   })
 
   afterEach(() => {

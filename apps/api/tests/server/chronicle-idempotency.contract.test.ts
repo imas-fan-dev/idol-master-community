@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHonoApp } from '@/app';
-import { HmacTokenService } from '@/infra/security/hmac/token-service';
+import { HmacBackofficeTokenService } from '@/infra/security/hmac/token-service';
 import type { IdempotencyClaim, IdempotencyResponse, IdempotencyStore } from '@/ports/cache';
 import {
     CHRONICLE_UPLOAD_ATTEMPT_LIMIT,
@@ -278,7 +278,7 @@ async function fixture() {
     const images = new FixtureImages();
     const limiter = new CapturingRateLimiter();
     const compensation = new MemoryCompensation();
-    const tokens = new HmacTokenService('chronicle-contract-secret-at-least-32-bytes');
+    const tokens = new HmacBackofficeTokenService('chronicle-contract-secret-at-least-32-bytes');
     const runtime: RuntimeServices = {
         storage,
         compensation,
@@ -286,7 +286,7 @@ async function fixture() {
         uploads,
         images,
         rateLimiter: limiter,
-        tokens
+        backofficeTokens: tokens
     };
     const token = await tokens.sign({
         id: 1,

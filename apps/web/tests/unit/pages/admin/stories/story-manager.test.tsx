@@ -144,7 +144,7 @@ function storiesPayload(upName = "投稿者") {
 
 describe("StoryManager", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=wiki-manager-test; path=/"
+    document.cookie = "ims_admin_csrf=wiki-manager-test; path=/"
   })
 
   afterEach(() => {

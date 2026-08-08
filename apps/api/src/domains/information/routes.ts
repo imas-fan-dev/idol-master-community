@@ -9,35 +9,35 @@ import { handleReorderInformation } from '@/domains/information/handlers/reorder
 import { handleServeInformationContent } from '@/domains/information/handlers/serve-information-content';
 import { handleUpdateInformation } from '@/domains/information/handlers/update-information';
 import { handleUploadInformationAsset } from '@/domains/information/handlers/upload-information-asset';
-import { coreAuth, coreCsrf, opOnly } from '@/middleware/hono-auth';
+import { backofficeAuth, backofficeCsrf, opOnly } from '@/middleware/hono-auth';
 
 export function registerInformationRoutes(app: ImsHonoApp): void {
     app.get('/information/:id/content', handleServeInformationContent);
     app.get('/api/information', handleListInformation);
     app.get('/api/information/:id', handleGetInformation);
-    app.get('/api/admin/information', coreAuth, opOnly, handleListAdminInformation);
+    app.get('/api/admin/information', backofficeAuth, opOnly, handleListAdminInformation);
     app.post(
         '/api/admin/information/assets',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleUploadInformationAsset
     );
-    app.post('/api/admin/information', coreAuth, opOnly, coreCsrf, handleCreateInformation);
+    app.post('/api/admin/information', backofficeAuth, opOnly, backofficeCsrf, handleCreateInformation);
     app.put(
         '/api/admin/information/order',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleReorderInformation
     );
-    app.put('/api/admin/information/:id', coreAuth, opOnly, coreCsrf, handleUpdateInformation);
+    app.put('/api/admin/information/:id', backofficeAuth, opOnly, backofficeCsrf, handleUpdateInformation);
     app.delete(
         '/api/admin/information/assets',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleDeleteInformationAsset
     );
-    app.delete('/api/admin/information/:id', coreAuth, opOnly, coreCsrf, handleDeleteInformation);
+    app.delete('/api/admin/information/:id', backofficeAuth, opOnly, backofficeCsrf, handleDeleteInformation);
 }

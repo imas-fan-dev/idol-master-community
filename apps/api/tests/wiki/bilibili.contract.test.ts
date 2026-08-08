@@ -81,19 +81,25 @@ describe('WIKI-02 isolated Bilibili parsing contract', () => {
     test('the five-second timeout aborts injected fetch and maps to the legacy gateway error', async (context) => {
         context.mock.timers.enable({ apis: ['setTimeout'] });
         const fixture = createWikiFixture();
-        let signal: AbortSignal | undefined;
+        let signalFetchStarted!: (signal: AbortSignal) => void;
+        const fetchStarted = new Promise<AbortSignal>((resolve) => {
+            signalFetchStarted = resolve;
+        });
         fixture.setFetch((async (_input, init) => {
-            signal = init?.signal ?? undefined;
+            const signal = init?.signal;
+            assert.ok(signal instanceof AbortSignal);
+            signalFetchStarted(signal);
             return new Promise<Response>((_resolve, reject) => {
-                signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+                signal.addEventListener(
+                    'abort',
+                    () => reject(new DOMException('aborted', 'AbortError')),
+                    { once: true }
+                );
             });
         }) as typeof globalThis.fetch);
 
         const pending = postBilibili(fixture, 'BV1xx411c7mD');
-        for (let attempt = 0; attempt < 20 && !signal; attempt += 1) {
-            await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-        assert.ok(signal, 'injected fetch must receive an AbortSignal before the timer advances');
+        const signal = await fetchStarted;
         assert.equal(signal.aborted, false);
         context.mock.timers.tick(4999);
         assert.equal(signal.aborted, false);

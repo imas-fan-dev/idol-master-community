@@ -58,7 +58,7 @@ function successResponse(payload: unknown = { status: "success" }) {
 
 describe("Wiki admin API", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=wiki-api-test; path=/"
+    document.cookie = "ims_admin_csrf=wiki-api-test; path=/"
   })
 
   afterEach(() => {

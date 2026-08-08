@@ -32,8 +32,10 @@ test("mobile Wiki agency switching preserves both scroll positions", async ({
     return rail.scrollLeft
   })
   await expect(targetAgency).toBeVisible()
-  await page.evaluate(() => window.scrollBy(0, 80))
-  const verticalScrollBefore = await page.evaluate(() => window.scrollY)
+  const verticalScrollBefore = await page.evaluate(() => {
+    window.scrollBy({ top: 80, behavior: "instant" })
+    return window.scrollY
+  })
 
   await targetAgency.click()
 
@@ -911,7 +913,7 @@ test("classic Wiki styles survive returning from a story", async ({
   await page.locator(".wiki-classic-idol-card").first().click()
   await expect(page).toHaveURL(/\/story\/classic\?/)
   await page.getByRole("link", { name: "返回上一页", exact: true }).click()
-  await expect(page).toHaveURL(/\/wiki\?/)
+  await expect(page).toHaveURL(/\/wiki\/classic\?/)
   await expect(
     page.getByRole("heading", {
       level: 1,

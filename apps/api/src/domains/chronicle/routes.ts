@@ -10,7 +10,7 @@ import { handleServeChronicleAdmin } from '@/domains/chronicle/handlers/serve-ch
 import { handleServeApprovedChronicleMedia } from '@/domains/chronicle/handlers/serve-approved-chronicle-media';
 import { handleServePendingChronicleMedia } from '@/domains/chronicle/handlers/serve-pending-chronicle-media';
 import { handleUploadChronicleMedia } from '@/domains/chronicle/handlers/upload-chronicle-media';
-import { coreAuth, coreCsrf, opOnly } from '@/middleware/hono-auth';
+import { backofficeAuth, backofficeCsrf, opOnly } from '@/middleware/hono-auth';
 
 export function registerChronicleRoutes(app: ImsHonoApp): void {
     const pendingMediaRoute =
@@ -25,34 +25,34 @@ export function registerChronicleRoutes(app: ImsHonoApp): void {
 
     app.post('/eventchronicle/upload', handleUploadChronicleMedia);
     app.get('/eventchronicle/activities/:id', handleGetChronicleActivity);
-    app.get('/eventchronicle/admin', coreAuth, opOnly, handleServeChronicleAdmin);
+    app.get('/eventchronicle/admin', backofficeAuth, opOnly, handleServeChronicleAdmin);
     app.get(
         '/eventchronicle/admin/pending',
-        coreAuth,
+        backofficeAuth,
         opOnly,
         handleListPendingChronicleMedia
     );
-    app.get('/eventchronicle/admin/used', coreAuth, opOnly, handleListUsedChronicleMedia);
+    app.get('/eventchronicle/admin/used', backofficeAuth, opOnly, handleListUsedChronicleMedia);
     app.post(
         '/eventchronicle/admin/approve/:activityId/:filename',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleApproveChronicleMedia
     );
     app.post(
         '/eventchronicle/admin/reject/:activityId/:filename',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleRejectChronicleMedia
     );
     app.get('/eventchronicle/activities', handleListChronicleActivities);
     app.delete(
         '/eventchronicle/admin/delete-used/:activityId/:filename',
-        coreAuth,
+        backofficeAuth,
         opOnly,
-        coreCsrf,
+        backofficeCsrf,
         handleDeleteUsedChronicleMedia
     );
 }

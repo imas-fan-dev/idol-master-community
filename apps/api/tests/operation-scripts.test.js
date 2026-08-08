@@ -18,6 +18,7 @@ const CONTAINER_DATA_SCRIPT = path.join(
     PROJECT_ROOT,
     'scripts/development/container-data.js'
 );
+const { addUser, databaseUrl } = require(ADD_USER_SCRIPT);
 const {
     ARCHIVE_ROOT,
     isNonEmptyFile,
@@ -26,7 +27,6 @@ const {
     validateArchiveEntryTypes,
     validateManifest
 } = require(CONTAINER_DATA_SCRIPT);
-const { databaseUrl } = require(ADD_USER_SCRIPT);
 const {
     compareInventories,
     parseArguments: parseRustfsSyncArguments,
@@ -35,13 +35,75 @@ const {
     validateSourceEnvironment
 } = require('../scripts/development/sync-r2-to-rustfs.js');
 
-test('categorized add-user script validates PostgreSQL connection URLs', () => {
-    const connectionString = 'postgresql://imsweb:secret@127.0.0.1:5432/imsweb';
-    assert.equal(databaseUrl({ DATABASE_URL: connectionString }), connectionString);
-    assert.throws(() => databaseUrl({}), /DATABASE_URL is required/);
+test('categorized add-user script writes a PostgreSQL backoffice account', async () => {
+    const calls = [];
+    let poolConfiguration;
+    let poolEnded = false;
+
+    class FakePool {
+        constructor(configuration) {
+            poolConfiguration = configuration;
+        }
+
+        async query(sql, parameters) {
+            calls.push({ sql, parameters });
+            return { rowCount: 1, rows: [{ id: 42 }] };
+        }
+
+        async end() {
+            poolEnded = true;
+        }
+    }
+
+    const messages = [];
+    const environment = {
+        DATABASE_URL: 'postgresql://imsweb:secret@127.0.0.1:5432/imsweb',
+        IMS_NEW_USER_USERNAME: 'categorized-script-test',
+        IMS_NEW_USER_PASSWORD: 'temporary-test-password',
+        IMS_NEW_USER_DEPT: 'op',
+        IMS_NEW_USER_PRODUCER_NAME: 'Script Test'
+    };
+    const result = await addUser({
+        environment,
+        PoolClass: FakePool,
+        hashPassword: async (password, rounds) => {
+            assert.equal(password, 'temporary-test-password');
+            assert.equal(rounds, 12);
+            return 'test-password-hash';
+        },
+        logger: {
+            error: message => messages.push(`error:${message}`),
+            log: message => messages.push(`log:${message}`)
+        }
+    });
+
+    assert.deepEqual(poolConfiguration, {
+        connectionString: environment.DATABASE_URL,
+        application_name: 'imsweb-ops-add-user'
+    });
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].sql, /INSERT INTO backoffice_accounts/);
+    assert.doesNotMatch(calls[0].sql, /INSERT INTO users/);
+    assert.deepEqual(calls[0].parameters, [
+        'categorized-script-test',
+        'test-password-hash',
+        'op',
+        'Script Test',
+        'admin'
+    ]);
+    assert.deepEqual(result, { created: true, id: 42 });
+    assert.deepEqual(messages, ['log:User created with ID 42.']);
+    assert.equal(poolEnded, true);
+});
+
+test('categorized add-user script requires a PostgreSQL DATABASE_URL', () => {
     assert.throws(
-        () => databaseUrl({ DATABASE_URL: 'mysql://localhost/imsweb' }),
-        /valid PostgreSQL URL/
+        () => databaseUrl({}),
+        /DATABASE_URL is required for PostgreSQL/
+    );
+    assert.throws(
+        () => databaseUrl({ DATABASE_URL: 'sqlite:accounts.db' }),
+        /DATABASE_URL must be a valid PostgreSQL URL/
     );
 });
 

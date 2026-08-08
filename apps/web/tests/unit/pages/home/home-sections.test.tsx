@@ -144,6 +144,9 @@ describe("home supporting sections", () => {
     render(<HomeSections />)
 
     expect(
+      screen.getByRole("status", { name: "正在加载活动资讯" })
+    ).toBeVisible()
+    expect(
       screen.getByRole("region", { name: "活动资讯与同人活动" })
     ).toBeVisible()
     expect(

@@ -668,23 +668,32 @@ test('[AUTH-01 CORE-01] shared auth contract runs against Node PostgreSQL and fi
 test('[AUTH-01] Node and WebCrypto JWTs interoperate and invalid token classes stay rejected', async () => {
     const secret = process.env.IMS_JWT_SECRET;
     const now = Math.floor(Date.now() / 1000);
+    const nodeSession = await getOpSession();
+    const nodeClaims = JSON.parse(
+        Buffer.from(nodeSession.token.split('.')[1], 'base64url').toString('utf8')
+    );
+    assert.equal(typeof nodeClaims.iss, 'string');
+    assert.equal(nodeClaims.aud, 'ims-backoffice');
+    assert.equal(nodeClaims.kind, 'backoffice');
     const claims = {
         id: 1,
         username: 'webcrypto-minted-op',
         producername: 'WebCrypto Minted',
         dept: 'op',
         csrfSecret: 'webcrypto-minted-csrf',
+        iss: nodeClaims.iss,
+        aud: 'ims-backoffice',
+        kind: 'backoffice',
         iat: now,
         exp: now + 600
     };
     const webCryptoMinted = await signJwtWithWebCrypto({ alg: 'HS256', typ: 'JWT' }, claims, secret);
-    const accepted = await fetch(`${baseUrl}/api/check`, {
+    const accepted = await fetch(`${baseUrl}/api/admin/auth/session`, {
         headers: { Authorization: `Bearer ${webCryptoMinted}` }
     });
     assert.equal(accepted.status, 200);
     assert.equal((await accepted.json()).user.username, 'webcrypto-minted-op');
 
-    const nodeSession = await getOpSession();
     assert.equal(await verifyJwtWithWebCrypto(nodeSession.token, secret), true);
 
     await assertRejectedJwtContract({
@@ -697,8 +706,26 @@ test('[AUTH-01] Node and WebCrypto JWTs interoperate and invalid token classes s
             expired: await signJwtWithWebCrypto(
                 { alg: 'HS256', typ: 'JWT' }, { ...claims, iat: now - 120, exp: now - 60 }, secret
             ),
-            'missing-claim': await signJwtWithWebCrypto(
+            'missing-CSRF-claim': await signJwtWithWebCrypto(
                 { alg: 'HS256', typ: 'JWT' }, { ...claims, csrfSecret: undefined }, secret
+            ),
+            'missing-issuer': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, iss: undefined }, secret
+            ),
+            'wrong-issuer': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, iss: `${claims.iss}-other` }, secret
+            ),
+            'missing-audience': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, aud: undefined }, secret
+            ),
+            'platform-audience': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, aud: 'ims-platform' }, secret
+            ),
+            'missing-kind': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, kind: undefined }, secret
+            ),
+            'platform-kind': await signJwtWithWebCrypto(
+                { alg: 'HS256', typ: 'JWT' }, { ...claims, kind: 'platform' }, secret
             ),
             'wrong-secret': await signJwtWithWebCrypto(
                 { alg: 'HS256', typ: 'JWT' }, claims, 'wrong-secret-that-is-at-least-32-bytes'
@@ -1118,9 +1145,10 @@ test('news publishing does not write an audit record when user lookup fails', as
     assert.equal(afterRow.total, beforeRow.total);
 });
 
-test('production refuses to load without IMS_JWT_SECRET', () => {
+test('production refuses to load without IMS_BACKOFFICE_JWT_SECRET', () => {
     const script = `require(${JSON.stringify(SERVER_ENTRY)})`;
     const env = { ...process.env, NODE_ENV: 'production' };
+    delete env.IMS_BACKOFFICE_JWT_SECRET;
     delete env.IMS_JWT_SECRET;
 
     const result = spawnSync(process.execPath, ['-e', script], {
@@ -1130,11 +1158,12 @@ test('production refuses to load without IMS_JWT_SECRET', () => {
     });
 
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /IMS_JWT_SECRET is required/);
+    assert.match(result.stderr, /IMS_BACKOFFICE_JWT_SECRET is required/);
 });
 
 test('production NODE_ENV is normalized before fail-fast checks', () => {
     const env = { ...process.env, NODE_ENV: ' Production ' };
+    delete env.IMS_BACKOFFICE_JWT_SECRET;
     delete env.IMS_JWT_SECRET;
     const result = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(SERVER_ENTRY)})`], {
         cwd: os.tmpdir(),
@@ -1142,7 +1171,7 @@ test('production NODE_ENV is normalized before fail-fast checks', () => {
         encoding: 'utf8'
     });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /IMS_JWT_SECRET is required/);
+    assert.match(result.stderr, /IMS_BACKOFFICE_JWT_SECRET is required/);
 });
 
 test('unknown NODE_ENV values fail fast', () => {
@@ -1155,12 +1184,12 @@ test('unknown NODE_ENV values fail fast', () => {
     assert.match(result.stderr, /NODE_ENV must be/);
 });
 
-test('production refuses a short IMS_JWT_SECRET', () => {
+test('production refuses a short IMS_BACKOFFICE_JWT_SECRET', () => {
     const script = `require(${JSON.stringify(SERVER_ENTRY)})`;
     const env = {
         ...process.env,
         NODE_ENV: 'production',
-        IMS_JWT_SECRET: 'too-short'
+        IMS_BACKOFFICE_JWT_SECRET: 'too-short'
     };
 
     const result = spawnSync(process.execPath, ['-e', script], {
@@ -1178,7 +1207,8 @@ test('production JWT secret length is measured in UTF-8 bytes', () => {
     const env = {
         ...process.env,
         NODE_ENV: 'production',
-        IMS_JWT_SECRET: '😀'.repeat(8),
+        IMS_BACKOFFICE_JWT_SECRET: '😀'.repeat(8),
+        IMS_PLATFORM_JWT_SECRET: '平台'.repeat(6),
         DATABASE_URL: databaseUrl,
         IMS_EVENT_BASE_DIR: path.join(tempDir, 'utf8-secret-events')
     };

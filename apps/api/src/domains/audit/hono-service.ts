@@ -7,7 +7,7 @@ export async function writeAudit(
     action: string,
     target: string
 ): Promise<void> {
-    const user = c.get('user');
+    const user = c.get('backofficeUser');
     try {
         await auditRepository(c).insertAuditLog({
             username: user?.username || 'anonymous',

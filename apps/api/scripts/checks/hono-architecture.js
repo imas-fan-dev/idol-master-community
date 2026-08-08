@@ -24,14 +24,16 @@ function filesUnder(directory) {
 const infraCategories = new Set([
     'cache',
     'db',
+    'email',
     'http',
     'media',
     'oss',
     'security'
 ]);
 const infraMiddleware = new Map([
-    ['cache', new Set(['filesystem', 'memory'])],
+    ['cache', new Set(['filesystem', 'memory', 'sql'])],
     ['db', new Set(['postgresql', 'repositories', 'sql'])],
+    ['email', new Set(['cloudflare'])],
     ['http', new Set(['busboy', 'filesystem'])],
     ['media', new Set(['sharp'])],
     ['oss', new Set(['filesystem', 's3'])],
@@ -69,7 +71,12 @@ for (const entry of fs.readdirSync(infraRoot, { withFileTypes: true })) {
 
 const databaseLayout = new Map([
     ['postgresql', ['connection.ts', 'schema-strategy.ts']],
-    ['repositories', ['core-repository.ts', 'story-repository.ts']],
+    ['repositories', [
+        'core-repository.ts',
+        'fudaba-repository.ts',
+        'platform-account-repository.ts',
+        'story-repository.ts'
+    ]],
     ['sql', ['database.ts', 'query.ts']]
 ]);
 for (const [directory, requiredFiles] of databaseLayout) {
@@ -83,11 +90,14 @@ for (const [directory, requiredFiles] of databaseLayout) {
 
 const portContracts = new Map([
     ['cache.ts', ['IdempotencyStore', 'RateLimiter', 'CacheServices']],
+    ['email.ts', ['PlatformEmailSender', 'EmailServices']],
     ['http.ts', ['StaticAssets', 'UploadParser', 'HttpServices']],
     ['media.ts', ['ImageProcessor', 'MediaServices']],
     ['object-storage.ts', ['ObjectStorage', 'CompensationService', 'ObjectStorageServices']],
     ['repositories.ts', [
-        'AuthRepository',
+        'BackofficeAuthRepository',
+        'PlatformAccountRepository',
+        'FudabaRepository',
         'AuditRepository',
         'NewsRepository',
         'EventRepository',
@@ -98,7 +108,11 @@ const portContracts = new Map([
         'RepositoryServices'
     ]],
     ['runtime-services.ts', ['RuntimeServices', 'NodeRuntimeServices']],
-    ['security.ts', ['PasswordVerifier', 'TokenService', 'SecurityServices']]
+    ['security.ts', [
+        'BackofficeTokenService',
+        'PasswordVerifier',
+        'SecurityServices'
+    ]]
 ]);
 for (const [name, contracts] of portContracts) {
     const file = path.join(portRoot, name);
@@ -328,6 +342,7 @@ for (const implementation of [
     'FilesystemIdempotencyStore',
     'MemoryRateLimiter',
     'PostgresConnection',
+    'SqlFudabaRepository',
     'FilesystemObjectStorage',
     'S3ObjectStorage',
     'StreamingUploadParser',

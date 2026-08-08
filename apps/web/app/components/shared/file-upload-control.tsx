@@ -112,7 +112,7 @@ export function FileUploadControl({
         name={name}
         type="file"
         accept={accept}
-        className="peer sr-only"
+        className="peer sr-only w-px!"
         disabled={inactive}
         aria-busy={uploading}
         aria-required={required}

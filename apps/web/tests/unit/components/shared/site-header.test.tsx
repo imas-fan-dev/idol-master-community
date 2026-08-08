@@ -5,6 +5,7 @@ import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SiteHeader } from "~/components/shared/site-header"
+import { PlatformSessionProvider } from "~/components/platform/platform-session-provider"
 import { i18n } from "~/i18n/config"
 import { defaultLanguage, defaultNamespace } from "~/i18n/resources"
 
@@ -15,7 +16,9 @@ vi.mock("next-themes", () => ({
 function TestProviders({ children }: { children: ReactNode }) {
   return (
     <I18nextProvider i18n={i18n} defaultNS={defaultNamespace}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter>
+        <PlatformSessionProvider>{children}</PlatformSessionProvider>
+      </MemoryRouter>
     </I18nextProvider>
   )
 }

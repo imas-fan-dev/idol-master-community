@@ -275,7 +275,8 @@ pnpm run media:information:sync -- --apply
 ### Wiki 全量素材同步
 
 Wiki 来源素材必须通过清单同步器导入，不能手工按展示名拼接对象键。同步器会遍历远端首页及
-全部剧情页，并要求远端入口与 PostgreSQL 中的企划/内容页集合一一对应：
+全部剧情页，并要求远端入口与 `DATABASE_URL` 指向的活动 PostgreSQL 中事务所/角色集合
+一一对应。可在 shell 中设置 `DATABASE_URL`，或由 `apps/api/.env` 提供：
 
 ```sh
 pnpm run wiki:media:sync -- \

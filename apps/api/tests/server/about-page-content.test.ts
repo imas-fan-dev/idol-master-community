@@ -114,7 +114,7 @@ function fixture() {
             async insertAuditLog(input) { audit.push(input); },
             async listRecentAuditLogs() { return []; }
         },
-        tokens: {
+        backofficeTokens: {
             async sign() { return 'about-token'; },
             async verify() {
                 return {

@@ -50,6 +50,8 @@ Options:
 
 Environment overrides:
   IMS_DEV_API_PORT, IMS_DEV_WEB_PORT, IMS_DEV_R2_ENV_FILE
+  IMS_DEV_FUDABA_PUBLIC_READ_ENABLED, IMS_DEV_FUDABA_WRITE_ENABLED
+  IMS_DEV_FUDABA_MAP_ENABLED, IMS_DEV_FUDABA_MAP_STYLE_URL
 `;
 }
 
@@ -163,6 +165,60 @@ function sanitizedApplicationEnvironment(environment) {
     }
   }
   return sanitized;
+}
+
+function developmentBooleanFlag(environment, name) {
+  const value = String(environment[name] || "").trim().toLowerCase();
+  if (!value) return "false";
+  if (value === "true" || value === "false") return value;
+  throw new Error(`${name} must be true or false`);
+}
+
+function developmentMapStyleUrl(environment) {
+  const rawValue = String(environment.IMS_DEV_FUDABA_MAP_STYLE_URL || "");
+  const value = rawValue.trim();
+  if (!value) return "";
+  if (
+    value.length > 2_048 ||
+    /[\0-\x1f\x7f]/.test(rawValue) ||
+    !value.startsWith("/") ||
+    value.includes("//") ||
+    value.includes("\\") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    throw new Error(
+      "IMS_DEV_FUDABA_MAP_STYLE_URL must be a same-origin absolute path " +
+        "without query or hash",
+    );
+  }
+  return value;
+}
+
+function resolveFudabaDevelopmentEnvironment(environment) {
+  const mapEnabled = developmentBooleanFlag(
+    environment,
+    "IMS_DEV_FUDABA_MAP_ENABLED",
+  );
+  const mapStyleUrl = developmentMapStyleUrl(environment);
+  if (mapEnabled === "true" && !mapStyleUrl) {
+    throw new Error(
+      "IMS_DEV_FUDABA_MAP_STYLE_URL is required when " +
+        "IMS_DEV_FUDABA_MAP_ENABLED=true",
+    );
+  }
+  return {
+    IMS_FUDABA_PUBLIC_READ_ENABLED: developmentBooleanFlag(
+      environment,
+      "IMS_DEV_FUDABA_PUBLIC_READ_ENABLED",
+    ),
+    IMS_FUDABA_WRITE_ENABLED: developmentBooleanFlag(
+      environment,
+      "IMS_DEV_FUDABA_WRITE_ENABLED",
+    ),
+    IMS_FUDABA_MAP_ENABLED: mapEnabled,
+    IMS_FUDABA_MAP_STYLE_URL: mapStyleUrl,
+  };
 }
 
 function encodedPostgresUrl({ host, port, database, username, password }) {
@@ -415,9 +471,11 @@ export function resolveDevelopmentConfiguration({
     PORT: String(options.apiPort),
     IMS_ENV_FILE: "",
     IMS_PROJECT_ROOT: repositoryRoot,
-    IMS_JWT_SECRET: "imsweb-local-development-secret",
+    IMS_BACKOFFICE_JWT_SECRET: "imsweb-local-development-secret",
+    IMS_PLATFORM_JWT_SECRET: "imsweb-local-development-platform-secret",
     IMS_COOKIE_SECURE: "false",
     IMS_CLIENT_ADDRESS_SOURCE: "direct",
+    ...resolveFudabaDevelopmentEnvironment(environment),
     DATABASE_URL: databaseUrl,
     ...objectStorageEnvironment,
     IMS_PUBLIC_DIR: "apps/api/dist/node-client",

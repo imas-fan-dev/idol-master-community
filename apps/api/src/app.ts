@@ -9,16 +9,18 @@ import {
     validatedRequestPath
 } from '@/middleware/rate-limit';
 import type { RuntimeServices, ResolveServices } from '@/ports/runtime-services';
-import type { JwtClaims } from '@/ports/security';
+import type { BackofficeJwtClaims, PlatformJwtClaims } from '@/ports/security';
+import type { PlatformAccountWithProfile } from '@/ports/repositories';
 import { requestCompletionLogger } from '@/middleware/request-observability';
 import { isSensitiveRequestPath } from '@/middleware/static-path-policy';
 import { registerAuditRoutes } from '@/domains/audit/routes';
 import { registerAdminAccountRoutes } from '@/domains/admin-accounts/routes';
 import { registerAboutRoutes } from '@/domains/about/routes';
-import { registerAuthRoutes } from '@/domains/auth/routes';
+import { registerBackofficeAuthRoutes } from '@/domains/backoffice-auth/routes';
 import { registerBrandAssetRoutes } from '@/domains/brand-assets/routes';
 import { registerChronicleRoutes } from '@/domains/chronicle/routes';
 import { registerEventRoutes } from '@/domains/events/routes';
+import { registerFudabaRoutes } from '@/domains/fudaba/routes';
 import { registerInformationRoutes } from '@/domains/information/routes';
 import { registerHomepageLinkRoutes } from '@/domains/homepage-links/routes';
 import { registerLiveScheduleRoutes } from '@/domains/live-schedule/routes';
@@ -26,6 +28,8 @@ import { registerMediaRoutes } from '@/domains/media/routes';
 import { registerNamecardRoutes } from '@/domains/namecards/routes';
 import { registerNewsRoutes } from '@/domains/news/routes';
 import { registerProducerMapRoutes } from '@/domains/producer-map/routes';
+import { registerPlatformAuthRoutes } from '@/domains/platform-auth/routes';
+import { registerPlatformProfileRoutes } from '@/domains/platform-profile/routes';
 import { registerReactionRoutes } from '@/domains/reactions/routes';
 import { registerSiteRoutes } from '@/domains/site/routes';
 import { registerSitePackageRoutes } from '@/domains/site-packages/routes';
@@ -35,8 +39,11 @@ export interface AppEnvironment {
     Bindings: object;
     Variables: RequestIdVariables & {
         services: RuntimeServices;
-        user?: JwtClaims;
-        authSource?: 'authorization' | 'cookie';
+        backofficeUser?: BackofficeJwtClaims;
+        backofficeAuthSource?: 'authorization' | 'cookie' | 'legacy-cookie';
+        platformUser?: PlatformJwtClaims;
+        platformAccount?: PlatformAccountWithProfile;
+        platformAuthSource?: 'authorization' | 'cookie';
     };
 }
 
@@ -104,6 +111,11 @@ export function createHonoApp<Bindings extends object = Record<string, unknown>>
             c.header('X-Frame-Options', 'SAMEORIGIN');
         }
     });
+    app.use('/api/platform/auth/*', async (c, next) => {
+        await next();
+        c.header('Cache-Control', 'private, no-store');
+        c.header('Vary', 'Authorization, Cookie', { append: true });
+    });
     app.use('*', requestRateLimit());
     app.use('*', jsonBodyLimit());
     app.use('*', async (c, next) => {
@@ -144,10 +156,13 @@ export function createHonoApp<Bindings extends object = Record<string, unknown>>
     registerAboutRoutes(app);
     registerProducerMapRoutes(app);
     registerBrandAssetRoutes(app);
-    registerAuthRoutes(app);
+    registerBackofficeAuthRoutes(app);
+    registerPlatformAuthRoutes(app);
+    registerPlatformProfileRoutes(app);
     registerAdminAccountRoutes(app);
     registerNamecardRoutes(app);
     registerEventRoutes(app);
+    registerFudabaRoutes(app);
     registerNewsRoutes(app);
     registerHomepageLinkRoutes(app);
     registerInformationRoutes(app);

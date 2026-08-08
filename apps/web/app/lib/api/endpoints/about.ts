@@ -1,11 +1,12 @@
 import { z } from "zod"
 
+import { adminApiClient } from "../admin-client"
 import {
   PUBLIC_CACHE_INVALIDATION_SOURCE,
   STABLE_CONTENT_CACHE_FOR,
 } from "../cache-policy"
 import { apiClient } from "../client"
-import { withCsrf } from "../types"
+import { withBackofficeAuth, withBackofficeCsrf } from "../types"
 
 const aboutPersonSchema = z.object({
   id: z.string(),
@@ -73,7 +74,8 @@ export function getAboutPageContent() {
 }
 
 export function getAdminAboutPageContent() {
-  return apiClient.Get<AboutAdminSnapshot, unknown>("/api/admin/about", {
+  return adminApiClient.Get<AboutAdminSnapshot, unknown>("/api/admin/about", {
+    meta: withBackofficeAuth(),
     transform: (payload) => aboutAdminSnapshotSchema.parse(payload),
   })
 }
@@ -82,11 +84,11 @@ export function updateAdminAboutPageContent(
   content: AboutPageContent,
   revision: string | null
 ) {
-  return apiClient.Put<z.infer<typeof aboutAdminUpdateSchema>, unknown>(
+  return adminApiClient.Put<z.infer<typeof aboutAdminUpdateSchema>, unknown>(
     "/api/admin/about",
     { content, revision },
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.about,
       transform: (payload) => aboutAdminUpdateSchema.parse(payload),
     }
@@ -96,25 +98,24 @@ export function updateAdminAboutPageContent(
 export function uploadAboutHeroImage(file: File) {
   const form = new FormData()
   form.append("image", file)
-  return apiClient.Post<z.infer<typeof aboutImageUploadSchema>, unknown>(
-    "/api/admin/about/hero-image",
-    form,
-    {
-      meta: withCsrf(),
-      name: PUBLIC_CACHE_INVALIDATION_SOURCE.about,
-      transform: (payload) => aboutImageUploadSchema.parse(payload),
-    }
-  )
+  return adminApiClient.Post<
+    z.infer<typeof aboutImageUploadSchema>,
+    unknown
+  >("/api/admin/about/hero-image", form, {
+    meta: withBackofficeCsrf(),
+    name: PUBLIC_CACHE_INVALIDATION_SOURCE.about,
+    transform: (payload) => aboutImageUploadSchema.parse(payload),
+  })
 }
 
 export function uploadAboutMemberAvatar(file: File) {
   const form = new FormData()
   form.append("image", file)
-  return apiClient.Post<z.infer<typeof aboutImageUploadSchema>, unknown>(
+  return adminApiClient.Post<z.infer<typeof aboutImageUploadSchema>, unknown>(
     "/api/admin/about/member-avatar",
     form,
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.about,
       transform: (payload) => aboutImageUploadSchema.parse(payload),
     }

@@ -54,12 +54,12 @@ function jsonResponse(payload: unknown) {
 describe("AboutManager", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
-    document.cookie = "csrf_token=; Max-Age=0; path=/"
+    document.cookie = "ims_admin_csrf=; Max-Age=0; path=/"
   })
 
   it("loads the current revision and saves edited content", async () => {
     const original = aboutContent()
-    document.cookie = "csrf_token=about-manager-test; path=/"
+    document.cookie = "ims_admin_csrf=about-manager-test; path=/"
     let savedBody: unknown
     let uploadedHeroFileName: string | null = null
     let heroUploadCsrf: string | null = null

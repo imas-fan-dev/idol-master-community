@@ -79,7 +79,7 @@ function fixture() {
             async insertAuditLog(input) { audit.push(input); },
             async listRecentAuditLogs() { return []; }
         },
-        tokens: {
+        backofficeTokens: {
             async sign() { return 'producer-map-token'; },
             async verify() {
                 return {

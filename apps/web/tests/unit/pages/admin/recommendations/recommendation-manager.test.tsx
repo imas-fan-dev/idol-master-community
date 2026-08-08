@@ -13,11 +13,11 @@ function jsonResponse(payload: unknown) {
 describe("RecommendationManager", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
-    document.cookie = "csrf_token=; Max-Age=0; path=/"
+    document.cookie = "ims_admin_csrf=; Max-Age=0; path=/"
   })
 
   it("reuses Bilibili parsing to fill and submit the recommendation cover", async () => {
-    document.cookie = "csrf_token=recommendation-test; path=/"
+    document.cookie = "ims_admin_csrf=recommendation-test; path=/"
     let submittedForm: FormData | null = null
     const fetchMock = vi
       .fn<typeof fetch>()

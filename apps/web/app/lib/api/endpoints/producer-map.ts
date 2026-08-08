@@ -1,11 +1,12 @@
 import { z } from "zod"
 
+import { adminApiClient } from "../admin-client"
 import {
   PUBLIC_CACHE_INVALIDATION_SOURCE,
   STABLE_CONTENT_CACHE_FOR,
 } from "../cache-policy"
 import { apiClient } from "../client"
-import { withCsrf } from "../types"
+import { withBackofficeAuth, withBackofficeCsrf } from "../types"
 
 export const producerMapSeriesSchema = z.enum([
   "all",
@@ -97,9 +98,10 @@ export function getProducerMapContent() {
 }
 
 export function getAdminProducerMapContent() {
-  return apiClient.Get<ProducerMapAdminSnapshot, unknown>(
+  return adminApiClient.Get<ProducerMapAdminSnapshot, unknown>(
     "/api/admin/producer-map",
     {
+      meta: withBackofficeAuth(),
       transform: (payload) => producerMapAdminSnapshotSchema.parse(payload),
     }
   )
@@ -109,11 +111,14 @@ export function updateAdminProducerMapContent(
   content: ProducerMapContent,
   revision: string | null
 ) {
-  return apiClient.Put<z.infer<typeof producerMapAdminUpdateSchema>, unknown>(
+  return adminApiClient.Put<
+    z.infer<typeof producerMapAdminUpdateSchema>,
+    unknown
+  >(
     "/api/admin/producer-map",
     { content, revision },
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.producerMap,
       transform: (payload) => producerMapAdminUpdateSchema.parse(payload),
     }

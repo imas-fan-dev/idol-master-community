@@ -121,6 +121,42 @@ function loadIdolRowsFromPostgres(storyRepository) {
     );
 }
 
+async function createPostgresStoryRepository(
+    environment = process.env,
+    dependencies = {}
+) {
+    const {
+        parseNodeDatabaseConfig,
+        PostgresConnection,
+        PostgresqlSchemaStrategy,
+        SqlStoryRepository
+    } = dependencies.modules || {
+        parseNodeDatabaseConfig: require('../../src/config/database.ts').parseNodeDatabaseConfig,
+        PostgresConnection: require('../../src/infra/db/postgresql/connection.ts').PostgresConnection,
+        PostgresqlSchemaStrategy:
+            require('../../src/infra/db/postgresql/schema-strategy.ts').PostgresqlSchemaStrategy,
+        SqlStoryRepository:
+            require('../../src/infra/db/repositories/story-repository.ts').SqlStoryRepository
+    };
+    const config = parseNodeDatabaseConfig(environment, { path: '' });
+    if (config.type !== 'postgresql') {
+        throw new Error('Wiki media sync requires IMS_DATABASE=postgresql');
+    }
+
+    const database = PostgresConnection.create(config);
+    const repository = new SqlStoryRepository(
+        database,
+        new PostgresqlSchemaStrategy()
+    );
+    try {
+        await repository.initialize();
+        return repository;
+    } catch (error) {
+        await repository.close();
+        throw error;
+    }
+}
+
 function buildIdolIndex(rows) {
     const index = new Map();
     for (const row of rows) {
@@ -478,7 +514,7 @@ async function uploadManifestDocument(storage, sourceOrigin, manifest) {
     });
 }
 
-async function uploadExistingManifest(options, idolIndex) {
+async function uploadExistingManifest(options, idolIndex, providedStorage) {
     const parsed = JSON.parse(await fsp.readFile(options.manifest, 'utf8'));
     if (parsed.version !== 1 || parsed.complete !== true || !Array.isArray(parsed.assets)) {
         throw new Error('Existing Wiki manifest must be a complete version 1 document');
@@ -513,7 +549,7 @@ async function uploadExistingManifest(options, idolIndex) {
         }
     });
 
-    const storage = await objectStorage();
+    const storage = providedStorage || await objectStorage();
     const results = await mapConcurrent(parsed.assets, options.assetConcurrency, async (asset) => {
         const result = await uploadAsset(storage, options.stagingDir, asset);
         asset.upload = result;
@@ -531,7 +567,7 @@ async function uploadExistingManifest(options, idolIndex) {
     return parsed;
 }
 
-async function syncWikiMedia(options, idolIndex) {
+async function syncWikiMedia(options, idolIndex, providedStorage) {
     const { parse } = await import('parse5');
     await fsp.mkdir(options.stagingDir, { recursive: true });
 
@@ -695,8 +731,9 @@ async function syncWikiMedia(options, idolIndex) {
         `${right.sourceUrl || ''}:${right.identity || ''}`
     ));
 
+    let storage = providedStorage;
     if (!manifest.errors.length && options.upload) {
-        const storage = await objectStorage();
+        storage ||= await objectStorage();
         const uploadResults = await mapConcurrent(
             manifest.assets,
             options.assetConcurrency,
@@ -743,10 +780,42 @@ async function syncWikiMedia(options, idolIndex) {
     }
 
     if (options.upload) {
-        const storage = await objectStorage();
+        storage ||= await objectStorage();
         await uploadManifestDocument(storage, options.sourceOrigin, manifest);
     }
     return manifest;
+}
+
+async function closeObjectStorageServices() {
+    const { closeNodeServices } = require('../../src/runtime/node-services.ts');
+    await closeNodeServices();
+}
+
+async function runWikiMediaSync(options, dependencies = {}) {
+    const openStoryRepository = dependencies.openStoryRepository ||
+        createPostgresStoryRepository;
+    const resolveStorage = dependencies.resolveStorage || objectStorage;
+    const closeStorage = dependencies.closeStorage || closeObjectStorageServices;
+    const crawl = dependencies.syncWikiMedia || syncWikiMedia;
+    const uploadExisting = dependencies.uploadExistingManifest || uploadExistingManifest;
+    let storyRepository;
+
+    try {
+        storyRepository = await openStoryRepository();
+        const idolIndex = buildIdolIndex(
+            await loadIdolRowsFromPostgres(storyRepository)
+        );
+        const storage = options.upload ? await resolveStorage() : undefined;
+        return options.uploadExisting
+            ? await uploadExisting(options, idolIndex, storage)
+            : await crawl(options, idolIndex, storage);
+    } finally {
+        try {
+            await storyRepository?.close();
+        } finally {
+            if (options.upload) await closeStorage();
+        }
+    }
 }
 
 async function main() {
@@ -757,25 +826,12 @@ async function main() {
     }
 
     require('../../src/config/load-environment.ts');
-    const { resolveNodeServices, closeNodeServices } = require('../../src/runtime/node-services.ts');
-
-    try {
-        const services = await resolveNodeServices();
-        const idolIndex = buildIdolIndex(
-            await loadIdolRowsFromPostgres(services.story)
-        );
-
-        const manifest = options.uploadExisting
-            ? await uploadExistingManifest(options, idolIndex)
-            : await syncWikiMedia(options, idolIndex);
-        process.stdout.write(`${JSON.stringify({
-            manifest: options.manifest,
-            complete: manifest.complete,
-            ...manifest.summary
-        }, null, 2)}\n`);
-    } finally {
-        await closeNodeServices();
-    }
+    const manifest = await runWikiMediaSync(options);
+    process.stdout.write(`${JSON.stringify({
+        manifest: options.manifest,
+        complete: manifest.complete,
+        ...manifest.summary
+    }, null, 2)}\n`);
 }
 
 if (require.main === module) {
@@ -792,11 +848,13 @@ module.exports = {
     buildIdolIndex,
     canonicalAssetUrl,
     canonicalStoryUrl,
+    createPostgresStoryRepository,
     extractCssReferences,
     extractHtmlReferences,
     mapAssetUrl,
     parseArguments,
     resolvedContentType,
+    runWikiMediaSync,
     safeObjectKey,
     syncWikiMedia,
     uploadExistingManifest

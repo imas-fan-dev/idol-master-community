@@ -52,7 +52,7 @@ function requestDetails(call: unknown[]) {
 
 describe("StoryEditorDialog", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=story-editor-test; path=/"
+    document.cookie = "ims_admin_csrf=story-editor-test; path=/"
   })
 
   afterEach(() => {

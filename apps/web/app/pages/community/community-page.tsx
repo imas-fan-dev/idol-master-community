@@ -1,7 +1,14 @@
-import { Gamepad2Icon, MapPinIcon, UsersIcon } from "lucide-react"
+import {
+  Building2Icon,
+  Gamepad2Icon,
+  MapPinIcon,
+  UsersIcon,
+} from "lucide-react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router"
 
 import { Card, CardContent } from "~/components/ui/card"
+import { getFudabaSeries, isApiError } from "~/lib/api"
 
 const communitySections = [
   {
@@ -24,20 +31,73 @@ const communitySections = [
   },
 ] as const
 
+const exchangeSection = {
+  to: "/community/exchange",
+  icon: Building2Icon,
+  title: "名片交换事务所",
+  description: "按城市与企划寻找公开事务所和可交换名片。",
+} as const
+
+type ExchangeAvailability = "checking" | "available" | "closed" | "error"
+
 export function meta() {
   return [{ title: "制作人社区 | IMSWeb" }]
 }
 
 export default function Community() {
+  const [exchangeAvailability, setExchangeAvailability] =
+    useState<ExchangeAvailability>("checking")
+
+  useEffect(() => {
+    let active = true
+    void getFudabaSeries()
+      .send()
+      .then(() => {
+        if (active) setExchangeAvailability("available")
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setExchangeAvailability(
+          isApiError(error) &&
+            error.status === 404 &&
+            error.payload === "Not Found"
+            ? "closed"
+            : "error"
+        )
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const visibleSections =
+    exchangeAvailability === "available" || exchangeAvailability === "error"
+      ? [
+          {
+            ...exchangeSection,
+            description:
+              exchangeAvailability === "error"
+                ? "交换区状态暂时无法确认，可直接进入重试。"
+                : exchangeSection.description,
+          },
+          ...communitySections,
+        ]
+      : communitySections
+
   return (
     <main id="main-content" className="mx-auto w-full max-w-5xl px-6 py-16">
       <h1 className="text-3xl font-semibold">制作人社区</h1>
       <p className="mt-4 leading-7 text-muted-foreground">
         浏览制作人社群、名片与共同创作的社区内容。
       </p>
+      {exchangeAvailability === "checking" ? (
+        <span role="status" className="sr-only">
+          正在确认名片交换事务所
+        </span>
+      ) : null}
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {communitySections.map((section) => {
+        {visibleSections.map((section) => {
           const content = (
             <Card className="group h-full transition-colors hover:border-foreground/25 hover:bg-muted/30">
               <CardContent className="flex items-start gap-4 p-5">
@@ -59,7 +119,7 @@ export default function Community() {
               <a
                 key={section.href}
                 href={section.href}
-                className="focus-visible:ring-3 block rounded-md focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="block rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 {content}
               </a>
@@ -70,7 +130,7 @@ export default function Community() {
             <Link
               key={section.to}
               to={section.to}
-              className="focus-visible:ring-3 block rounded-md focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="block rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               {content}
             </Link>

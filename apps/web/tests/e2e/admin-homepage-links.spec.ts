@@ -32,13 +32,13 @@ test("admin reorders homepage links with the drag handle", async ({
 
   await context.addCookies([
     {
-      name: "csrf_token",
+      name: "ims_admin_csrf",
       value: "homepage-links-e2e",
       domain: "127.0.0.1",
       path: "/",
     },
   ])
-  await page.route("**/api/check", async (route) => {
+  await page.route("**/api/admin/auth/session", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({

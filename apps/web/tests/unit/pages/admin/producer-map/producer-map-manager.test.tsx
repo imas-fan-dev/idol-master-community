@@ -42,11 +42,11 @@ function jsonResponse(payload: unknown) {
 describe("ProducerMapManager", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
-    document.cookie = "csrf_token=; Max-Age=0; path=/"
+    document.cookie = "ims_admin_csrf=; Max-Age=0; path=/"
   })
 
   it("loads the current revision and saves page and region edits", async () => {
-    document.cookie = "csrf_token=producer-map-manager-test; path=/"
+    document.cookie = "ims_admin_csrf=producer-map-manager-test; path=/"
     let savedBody: unknown
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -96,7 +96,7 @@ describe("ProducerMapManager", () => {
   })
 
   it("previews and updates configured region images", async () => {
-    document.cookie = "csrf_token=producer-map-image-test; path=/"
+    document.cookie = "ims_admin_csrf=producer-map-image-test; path=/"
     let savedBody: unknown
     const current = content()
     current.regions = [

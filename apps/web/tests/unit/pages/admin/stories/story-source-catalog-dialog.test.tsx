@@ -30,7 +30,7 @@ const sourcePlatforms = [
 
 describe("StorySourceCatalogDialog", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=source-catalog-test; path=/"
+    document.cookie = "ims_admin_csrf=source-catalog-test; path=/"
   })
 
   afterEach(() => {

@@ -4,10 +4,12 @@ import type { AppEnvironment } from '@/app';
 import type {
     AdminAccountRepository,
     AuditRepository,
-    AuthRepository,
+    BackofficeAuthRepository,
     EventRepository,
+    FudabaRepository,
     NamecardRepository,
     NewsRepository,
+    PlatformAccountRepository,
     ReactionRepository,
     SitePackageRepository
 } from '@/ports/repositories';
@@ -26,12 +28,24 @@ function requireRepository<Key extends keyof RuntimeServices>(
     return repository as NonNullable<RuntimeServices[Key]>;
 }
 
-export function authRepository(c: Context<AppEnvironment>): AuthRepository {
-    return requireRepository(c, 'auth');
+export function backofficeAuthRepository(
+    c: Context<AppEnvironment>
+): BackofficeAuthRepository {
+    return requireRepository(c, 'backofficeAuth');
 }
 
 export function adminAccountRepository(c: Context<AppEnvironment>): AdminAccountRepository {
     return requireRepository(c, 'adminAccounts');
+}
+
+export function platformAccountRepository(
+    c: Context<AppEnvironment>
+): PlatformAccountRepository {
+    return requireRepository(c, 'platformAccounts');
+}
+
+export function fudabaRepository(c: Context<AppEnvironment>): FudabaRepository {
+    return requireRepository(c, 'fudaba');
 }
 
 export function auditRepository(c: Context<AppEnvironment>): AuditRepository {

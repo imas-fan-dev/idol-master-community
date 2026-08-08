@@ -224,7 +224,7 @@ test('site-package routes share the main origin and enforce manifests, CSP, and 
         audit: repository,
         storage,
         uploads: new StreamingUploadParser(),
-        tokens: {
+        backofficeTokens: {
             sign: async () => 'op-token',
             verify: async (token: string) => {
                 if (token !== 'op-token') throw new Error('invalid token');

@@ -84,9 +84,10 @@ pnpm run build
 pnpm run start
 ```
 
-生产环境必须在 `apps/api/.env` 或进程管理器中设置高强度 `IMS_JWT_SECRET`。管理员登录使用
-15 分钟 access JWT 与可轮换、可撤销的 30 天 refresh token；发布前必须应用最新 PostgreSQL
-迁移。数据库导入、媒体迁移和部署配置分别见下方专项文档。
+生产环境必须在 `apps/api/.env` 或进程管理器中设置高强度
+`IMS_BACKOFFICE_JWT_SECRET`。管理员登录使用 15 分钟 access JWT 与可轮换、可撤销的 30 天
+refresh token；旧 `IMS_JWT_SECRET` 只用于 Backoffice 滚动兼容和代码回滚。发布前必须应用
+最新 PostgreSQL 迁移。数据库导入、媒体迁移和部署配置分别见下方专项文档。
 
 ## 静态资源
 

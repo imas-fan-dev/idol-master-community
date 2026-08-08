@@ -6,6 +6,7 @@ import { AdminReturnShortcut } from "~/components/shared/admin-return-shortcut"
 
 const mocks = vi.hoisted(() => ({
   getAdminSession: vi.fn(() => ({ id: "admin-session-method" })),
+  hasBackofficeSessionHint: vi.fn(),
   onError: vi.fn(),
   useRequest: vi.fn(),
 }))
@@ -16,6 +17,7 @@ vi.mock("alova/client", () => ({
 
 vi.mock("~/lib/api", () => ({
   getAdminSession: mocks.getAdminSession,
+  hasBackofficeSessionHint: mocks.hasBackofficeSessionHint,
 }))
 
 function renderShortcut() {
@@ -28,6 +30,7 @@ function renderShortcut() {
 
 describe("AdminReturnShortcut", () => {
   beforeEach(() => {
+    mocks.hasBackofficeSessionHint.mockReturnValue(true)
     mocks.onError.mockReturnValue(undefined)
   })
 
@@ -86,6 +89,25 @@ describe("AdminReturnShortcut", () => {
 
     renderShortcut()
 
+    expect(
+      screen.queryByRole("link", { name: "返回管理工作台" })
+    ).not.toBeInTheDocument()
+  })
+
+  it("does not send a session request without a CSRF cookie hint", () => {
+    mocks.hasBackofficeSessionHint.mockReturnValue(false)
+    mocks.useRequest.mockReturnValue({
+      data: undefined,
+      error: undefined,
+      onError: mocks.onError,
+    })
+
+    renderShortcut()
+
+    expect(mocks.useRequest).toHaveBeenCalledWith(
+      { id: "admin-session-method" },
+      { immediate: false }
+    )
     expect(
       screen.queryByRole("link", { name: "返回管理工作台" })
     ).not.toBeInTheDocument()

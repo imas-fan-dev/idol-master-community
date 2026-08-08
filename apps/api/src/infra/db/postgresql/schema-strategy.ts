@@ -41,6 +41,14 @@ export class PostgresqlSchemaStrategy implements SqlSchemaStrategy {
         return this.verify(database);
     }
 
+    initializePlatform(database: ManagedSqlDatabase): Promise<void> {
+        return this.verify(database);
+    }
+
+    initializeFudaba(database: ManagedSqlDatabase): Promise<void> {
+        return this.verify(database);
+    }
+
     initializeStory(database: ManagedSqlDatabase): Promise<void> {
         return this.verify(database);
     }

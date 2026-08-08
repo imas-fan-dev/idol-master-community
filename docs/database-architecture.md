@@ -1,5 +1,8 @@
 # 数据库架构
 
+当前工作树的 PostgreSQL 分层 ER 图与完整物理表清单见
+[PostgreSQL 表关系图](database-table-relationships.md)。
+
 ## 当前结论
 
 IMSWeb 采用一个 PostgreSQL 物理数据库和一个进程级连接池。Core 与 Story 仅是业务能力边界，

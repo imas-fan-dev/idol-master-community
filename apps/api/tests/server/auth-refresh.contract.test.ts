@@ -5,8 +5,8 @@ import { SqlCoreRepository } from '@/infra/db/repositories/core-repository';
 import { PostgresConnection } from '@/infra/db/postgresql/connection';
 import { PostgresqlSchemaStrategy } from '@/infra/db/postgresql/schema-strategy';
 import { executeSql, queryOne } from '@/infra/db/sql/query';
-import { HmacTokenService } from '@/infra/security/hmac/token-service';
-import { hashAuthSecret } from '@/domains/auth/auth-session';
+import { HmacBackofficeTokenService } from '@/infra/security/hmac/token-service';
+import { hashBackofficeAuthSecret } from '@/domains/backoffice-auth/backoffice-auth-session';
 import type { RuntimeServices } from '@/ports/runtime-services';
 import { createPostgresTestDatabase } from './postgres-test-database';
 
@@ -58,14 +58,16 @@ async function createFixture(t: TestContext): Promise<AuthFixture> {
         [NON_OP_USERNAME]
     );
     const runtime: RuntimeServices = {
-        auth: repository,
+        backofficeAuth: repository,
         audit: repository,
         passwords: {
             async verify(value, digest) {
                 return value === PASSWORD && digest === 'refresh-contract-digest';
             }
         },
-        tokens: new HmacTokenService('refresh-contract-secret-at-least-thirty-two-bytes'),
+        backofficeTokens: new HmacBackofficeTokenService(
+            'refresh-contract-secret-at-least-thirty-two-bytes'
+        ),
         config: { cookieSecure: false }
     };
     return {
@@ -165,10 +167,10 @@ test('access JWT login creates a rotating refresh session with CSRF binding', as
     const refreshToken = session.cookies.get('refresh_token')!;
     const csrf = session.cookies.get('csrf_token')!;
     const stored = await fixture.repository.findRefreshSessionByTokenHash(
-        await hashAuthSecret(refreshToken)
+        await hashBackofficeAuthSecret(refreshToken)
     );
     assert.ok(stored);
-    assert.equal(stored.token_hash, await hashAuthSecret(refreshToken));
+    assert.equal(stored.token_hash, await hashBackofficeAuthSecret(refreshToken));
     assert.notEqual(stored.token_hash, refreshToken);
 
     const missingCsrf = await fixture.app.request('http://ims.test/api/refresh', {
@@ -232,7 +234,14 @@ test('logout revokes the refresh session and clears all authentication cookies',
     assert.equal(logout.status, 200);
     assert.deepEqual(
         setCookies(logout).map((cookie) => cookie.split('=', 1)[0]).sort(),
-        ['csrf_token', 'refresh_token', 'token']
+        [
+            'csrf_token',
+            'ims_admin_access',
+            'ims_admin_csrf',
+            'ims_admin_refresh',
+            'refresh_token',
+            'token'
+        ]
     );
     for (const cookie of setCookies(logout)) assert.match(cookie, /Max-Age=0/i);
 

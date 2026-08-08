@@ -74,7 +74,7 @@ test('information reorder persists exact card order and rejects incomplete inven
             insertAuditLog: async () => undefined,
             listRecentAuditLogs: async () => []
         },
-        tokens: {
+        backofficeTokens: {
             sign: async () => 'op-token',
             verify: async () => ({
                 id: 1,

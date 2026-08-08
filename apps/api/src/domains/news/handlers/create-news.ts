@@ -4,7 +4,11 @@ import { writeAudit } from '@/domains/audit/hono-service';
 import { parseNewsSubmission } from '@/domains/news/submission';
 import { randomHex } from '@/utils/crypto/random';
 import { messageFromError, statusFromError } from '@/utils/http/error-response';
-import { authRepository, newsRepository, services } from '@/middleware/hono-context';
+import {
+    backofficeAuthRepository,
+    newsRepository,
+    services
+} from '@/middleware/hono-context';
 import { fetchBilibiliCover } from '@/utils/media/bilibili-cover';
 import { safeUploadBaseName } from '@/utils/media/filename';
 import { validateUploadedImage } from '@/utils/media/image-upload';
@@ -67,7 +71,7 @@ export async function handleCreateNews(c: Context<AppEnvironment>): Promise<Resp
             });
         }
 
-        const user = await authRepository(c).findUserById(c.get('user')!.id);
+        const user = await backofficeAuthRepository(c).findUserById(c.get('backofficeUser')!.id);
         if (!user) {
             if (runtime.storage) {
                 await Promise.all([originalKey, thumbnailKey].filter(Boolean).map((key) =>

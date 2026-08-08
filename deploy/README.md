@@ -33,6 +33,9 @@ curl --fail http://127.0.0.1:3000/api/wiki/test
 
 `dev:api:up` 是容器集成预览入口：它会构建 API 镜像，并按健康依赖顺序启动 PostgreSQL、
 RustFS 初始化任务和 API，但不提供源码热更新。
+镜像构建通过 `IMS_DEBIAN_MIRROR_BASE`、`IMS_NPM_REGISTRY` 和
+`IMS_NODE_HEADERS_MIRROR` 分别覆盖 apt、Corepack/pnpm 与原生 Node headers 下载源；模板默认
+使用国内 npm 镜像，并为本地构建提供国内 Debian 镜像。不要把认证信息写入这些公开 mirror URL。
 只需要依赖服务或需要 Hono 源码热更新时，仍可分别运行：
 
 ```sh
@@ -50,9 +53,11 @@ API 仅映射到宿主机回环地址，容器内通过 `postgres:5432` 访问�
 ## PostgreSQL + Cloudflare R2
 
 生产机的 `/etc/imsweb/production.env` 应将 `COMPOSE_PROFILES` 留空，并设置完整的
-`IMS_S3_*`、AWS 凭据、高熵
-`IMS_JWT_SECRET`、`IMS_API_DATABASE_URL`，并在首次启用管理员角色时将
-`IMS_SUPER_ADMIN_USERNAME` 设为现有 `op` 账号。R2 使用 `auto` region；
+`IMS_S3_*`、AWS 凭据、互不相同的高熵 `IMS_BACKOFFICE_JWT_SECRET` 与
+`IMS_PLATFORM_JWT_SECRET`、`IMS_API_DATABASE_URL`，并在首次启用管理员角色时将
+`IMS_SUPER_ADMIN_USERNAME` 设为现有 `op` 账号。若从旧版本滚动升级，按
+[运维手册](../docs/operations-runbook.md) 暂时保留旧 `IMS_JWT_SECRET`；全新安装保持其为空。
+R2 使用 `auto` region；
 `IMS_S3_ENDPOINT` 是 R2 S3 API 域名，`IMS_PUBLIC_READ_URL_BASE` 是 bucket 自定义域名，
 二者不能互换。手工排障时先指定 CI 已记录的不可变镜像，再渲染配置和启动 API 栈：
 

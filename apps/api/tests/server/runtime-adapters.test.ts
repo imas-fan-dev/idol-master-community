@@ -24,9 +24,18 @@ import type { ObjectStorage } from '@/ports/object-storage';
 import type { RuntimeServices } from '@/ports/runtime-services';
 import {
     createNodeServiceLifecycle,
-    initializeNodeRepositories
+    initializeNodeRepositories,
+    validateFudabaPublicReadStorage
 } from '@/runtime/node-services';
-import { parseClientAddressSource, parseStoryMaxUploadBytes } from '@/config/env';
+import {
+    parseClientAddressSource,
+    parseFudabaMapConfig,
+    parseFudabaMapEnabled,
+    parseFudabaMapStyleUrl,
+    parseFudabaPublicReadEnabled,
+    parseFudabaWriteEnabled,
+    parseStoryMaxUploadBytes
+} from '@/config/env';
 import { parseNodeDatabaseConfig } from '@/config/database';
 import { parseNodeObjectStorageConfig } from '@/config/object-storage';
 import { shutdownServer } from '@/main';
@@ -41,13 +50,33 @@ test('Node repository initialization closes every constructed resource after par
         async initialize() { calls.push('core:init'); },
         async close() { calls.push('core:close'); }
     };
+    const platform = {
+        async initialize() { calls.push('platform:init'); },
+        async close() { calls.push('platform:close'); }
+    };
+    const fudaba = {
+        async initialize() { calls.push('fudaba:init'); },
+        async close() { calls.push('fudaba:close'); }
+    };
     const story = {
         async initialize() { calls.push('story:init'); throw new Error('story init failed'); },
         async close() { calls.push('story:close'); }
     };
 
-    await assert.rejects(initializeNodeRepositories(core, story), /story init failed/);
-    assert.deepEqual(calls, ['core:init', 'story:init', 'story:close', 'core:close']);
+    await assert.rejects(
+        initializeNodeRepositories(core, platform, fudaba, story),
+        /story init failed/
+    );
+    assert.deepEqual(calls, [
+        'core:init',
+        'platform:init',
+        'fudaba:init',
+        'story:init',
+        'story:close',
+        'fudaba:close',
+        'platform:close',
+        'core:close'
+    ]);
 });
 
 test('graceful shutdown stops HTTP acceptance before closing runtime services', async () => {
@@ -85,15 +114,125 @@ test('Node trusts proxy address headers only when Nginx is explicit', () => {
     );
 });
 
+test('Fudaba public reads require an explicit boolean feature flag', () => {
+    assert.equal(parseFudabaPublicReadEnabled(undefined), false);
+    assert.equal(parseFudabaPublicReadEnabled(' true '), true);
+    assert.equal(parseFudabaPublicReadEnabled('0'), false);
+    assert.throws(
+        () => parseFudabaPublicReadEnabled('enabled'),
+        /IMS_FUDABA_PUBLIC_READ_ENABLED must be true or false/
+    );
+});
+
+test('Fudaba writes use an independent explicit boolean feature flag', () => {
+    assert.equal(parseFudabaWriteEnabled(undefined), false);
+    assert.equal(parseFudabaWriteEnabled(' yes '), true);
+    assert.equal(parseFudabaWriteEnabled('off'), false);
+    assert.throws(
+        () => parseFudabaWriteEnabled('enabled'),
+        /IMS_FUDABA_WRITE_ENABLED must be true or false/
+    );
+});
+
+test('Fudaba map configuration is disabled by default and strictly parsed', () => {
+    assert.deepEqual(parseFudabaMapConfig({}), {
+        enabled: false,
+        styleUrl: ''
+    });
+    assert.equal(parseFudabaMapEnabled(' true '), true);
+    assert.equal(parseFudabaMapEnabled('FALSE'), false);
+    for (const value of ['1', '0', 'yes', 'on', 'enabled']) {
+        assert.throws(
+            () => parseFudabaMapEnabled(value),
+            /IMS_FUDABA_MAP_ENABLED must be true or false/
+        );
+    }
+    assert.deepEqual(parseFudabaMapConfig({
+        IMS_FUDABA_MAP_ENABLED: 'true',
+        IMS_FUDABA_MAP_STYLE_URL: ' /api/community/exchange/map/style.json '
+    }), {
+        enabled: true,
+        styleUrl: '/api/community/exchange/map/style.json'
+    });
+    assert.throws(
+        () => parseFudabaMapConfig({ IMS_FUDABA_MAP_ENABLED: 'true' }),
+        /IMS_FUDABA_MAP_STYLE_URL is required when IMS_FUDABA_MAP_ENABLED=true/
+    );
+});
+
+test('Fudaba map style accepts only a same-origin absolute path', () => {
+    assert.equal(parseFudabaMapStyleUrl(undefined), '');
+    assert.equal(parseFudabaMapStyleUrl('   '), '');
+    assert.equal(
+        parseFudabaMapStyleUrl('/api/community/exchange/map/style.json'),
+        '/api/community/exchange/map/style.json'
+    );
+    for (const value of [
+        'style.json',
+        'https://tiles.example.test/style.json',
+        '//tiles.example.test/style.json',
+        '/styles//map.json',
+        '/styles\\map.json',
+        '/styles/map.json?key=secret',
+        '/styles/map.json#layer',
+        '/styles/map\n.json',
+        `/styles/${'x'.repeat(2048)}`
+    ]) {
+        assert.throws(
+            () => parseFudabaMapStyleUrl(value),
+            /IMS_FUDABA_MAP_STYLE_URL must be a same-origin absolute path/
+        );
+    }
+});
+
+test('Fudaba public reads require S3 public object URL configuration', () => {
+    assert.doesNotThrow(() => validateFudabaPublicReadStorage(false, {
+        type: 's3',
+        bucket: 'imsweb-media',
+        region: 'us-east-1',
+        forcePathStyle: false,
+        prefix: '',
+        readUrlTtlSeconds: 300
+    }));
+    assert.doesNotThrow(() => validateFudabaPublicReadStorage(true, {
+        type: 's3',
+        bucket: 'imsweb-media',
+        publicReadUrlBase: 'https://media.example.test',
+        region: 'us-east-1',
+        forcePathStyle: false,
+        prefix: '',
+        readUrlTtlSeconds: 300
+    }));
+    assert.throws(
+        () => validateFudabaPublicReadStorage(true, { type: 'filesystem' }),
+        /IMS_OBJECT_STORAGE=s3 is required/
+    );
+    assert.throws(
+        () => validateFudabaPublicReadStorage(true, {
+            type: 's3',
+            bucket: 'imsweb-media',
+            region: 'us-east-1',
+            forcePathStyle: false,
+            prefix: '',
+            readUrlTtlSeconds: 300
+        }),
+        /IMS_PUBLIC_READ_URL_BASE is required/
+    );
+});
+
 test('early close does not poison a later Node service and concurrent close is idempotent', async () => {
     let creates = 0;
     let coreCloses = 0;
+    let platformCloses = 0;
+    let fudabaCloses = 0;
     let storyCloses = 0;
     let storageCloses = 0;
     const lifecycle = createNodeServiceLifecycle(async () => {
         creates += 1;
         return {
-            auth: { close: async () => { coreCloses += 1; } },
+            backofficeAuth: { close: async () => { coreCloses += 1; } },
+            platformAccounts: { close: async () => { platformCloses += 1; } },
+            fudaba: { close: async () => { fudabaCloses += 1; } },
             story: { close: async () => { storyCloses += 1; } },
             storage: { close: () => { storageCloses += 1; } }
         } as unknown as RuntimeServices;
@@ -103,15 +242,29 @@ test('early close does not poison a later Node service and concurrent close is i
     await lifecycle.resolve();
     await Promise.all([lifecycle.close(), lifecycle.close()]);
     assert.deepEqual(
-        { creates, coreCloses, storyCloses, storageCloses },
-        { creates: 1, coreCloses: 1, storyCloses: 1, storageCloses: 1 }
+        { creates, coreCloses, platformCloses, fudabaCloses, storyCloses, storageCloses },
+        {
+            creates: 1,
+            coreCloses: 1,
+            platformCloses: 1,
+            fudabaCloses: 1,
+            storyCloses: 1,
+            storageCloses: 1
+        }
     );
 
     await lifecycle.resolve();
     await lifecycle.close();
     assert.deepEqual(
-        { creates, coreCloses, storyCloses, storageCloses },
-        { creates: 2, coreCloses: 2, storyCloses: 2, storageCloses: 2 }
+        { creates, coreCloses, platformCloses, fudabaCloses, storyCloses, storageCloses },
+        {
+            creates: 2,
+            coreCloses: 2,
+            platformCloses: 2,
+            fudabaCloses: 2,
+            storyCloses: 2,
+            storageCloses: 2
+        }
     );
 });
 

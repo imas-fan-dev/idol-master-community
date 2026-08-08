@@ -1,11 +1,12 @@
 import { z } from "zod"
 
+import { adminApiClient } from "../admin-client"
 import {
   PUBLIC_CACHE_INVALIDATION_SOURCE,
   STABLE_CONTENT_CACHE_FOR,
 } from "../cache-policy"
 import { apiClient } from "../client"
-import { withCsrf } from "../types"
+import { withBackofficeAuth, withBackofficeCsrf } from "../types"
 
 export const homepageLinkSectionSchema = z.enum([
   "navigation",
@@ -77,17 +78,21 @@ export function getHomepageLinks() {
 }
 
 export function getAdminHomepageLinks() {
-  return apiClient.Get<HomepageLinks, unknown>("/api/admin/homepage-links", {
-    transform: (payload) => homepageLinksSchema.parse(payload),
-  })
+  return adminApiClient.Get<HomepageLinks, unknown>(
+    "/api/admin/homepage-links",
+    {
+      meta: withBackofficeAuth(),
+      transform: (payload) => homepageLinksSchema.parse(payload),
+    }
+  )
 }
 
 export function createHomepageLink(submission: HomepageLinkSubmission) {
-  return apiClient.Post<{ success: true; link: HomepageLink }, unknown>(
+  return adminApiClient.Post<{ success: true; link: HomepageLink }, unknown>(
     "/api/admin/homepage-links",
     submission,
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.homepageLinks,
     }
   )
@@ -97,22 +102,22 @@ export function updateHomepageLink(
   id: string,
   submission: Omit<HomepageLinkSubmission, "section">
 ) {
-  return apiClient.Put<{ success: true; link: HomepageLink }, unknown>(
+  return adminApiClient.Put<{ success: true; link: HomepageLink }, unknown>(
     `/api/admin/homepage-links/${encodeURIComponent(id)}`,
     submission,
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.homepageLinks,
     }
   )
 }
 
 export function deleteHomepageLink(id: string) {
-  return apiClient.Delete<{ success: true }, unknown>(
+  return adminApiClient.Delete<{ success: true }, unknown>(
     `/api/admin/homepage-links/${encodeURIComponent(id)}`,
     undefined,
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.homepageLinks,
     }
   )
@@ -122,11 +127,11 @@ export function reorderHomepageLinks(
   section: HomepageLinkSection,
   ids: string[]
 ) {
-  return apiClient.Put<{ success: true }, unknown>(
+  return adminApiClient.Put<{ success: true }, unknown>(
     `/api/admin/homepage-links/${section}/order`,
     { ids },
     {
-      meta: withCsrf(),
+      meta: withBackofficeCsrf(),
       name: PUBLIC_CACHE_INVALIDATION_SOURCE.homepageLinks,
     }
   )

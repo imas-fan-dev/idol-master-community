@@ -4,16 +4,16 @@ import {
     chroniclePrefix,
     safeChronicleSegment
 } from '@/domains/chronicle/chronicle-records';
-import { authenticateCoreRequest } from '@/middleware/hono-auth';
+import { authenticateBackofficeRequest } from '@/middleware/hono-auth';
 import { objectReadResponse } from '@/utils/http/object-read-response';
 import { services } from '@/middleware/hono-context';
 
 export async function handleServePendingChronicleMedia(
     c: Context<AppEnvironment>
 ): Promise<Response> {
-    const authFailure = await authenticateCoreRequest(c);
+    const authFailure = await authenticateBackofficeRequest(c);
     if (authFailure) return authFailure;
-    if (c.get('user')?.dept !== 'op') {
+    if (c.get('backofficeUser')?.dept !== 'op') {
         return c.json({ message: '无权限（仅op可访问）' }, 403);
     }
     const activityId = safeChronicleSegment(c.req.param('activityId'), 'activityId');

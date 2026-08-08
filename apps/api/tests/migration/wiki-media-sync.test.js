@@ -10,6 +10,7 @@ const {
     extractHtmlReferences,
     mapAssetUrl,
     parseArguments,
+    runWikiMediaSync,
     safeObjectKey
 } = require('../../scripts/migration/wiki-media-sync');
 
@@ -26,9 +27,92 @@ test('Wiki media sync accepts pnpm forwarded argument separators', () => {
     assert.equal(options.help, true);
 });
 
-test('Wiki media sync leaves database ownership to runtime services', () => {
-    const options = parseArguments([]);
-    assert.equal('database' in options, false);
+test('Wiki media sync no longer accepts a SQLite database option', () => {
+    const options = parseArguments([], {
+        IMS_SQLITE_PATH: '/tmp/imsweb.db',
+        IMS_STORY_DB_PATH: '/tmp/legacy-story.db'
+    });
+    assert.equal(Object.hasOwn(options, 'database'), false);
+    assert.throws(
+        () => parseArguments(['--database', '/tmp/imsweb.db']),
+        /Unknown argument: --database/
+    );
+});
+
+test('Wiki media crawl opens only the story repository when upload is disabled', async () => {
+    const calls = [];
+    const storyRepository = {
+        listIdolsWithAgencies: async () => [{
+            agency_code: 'sc',
+            agency_name: '闪耀色彩',
+            name_cn: '樱木真乃',
+            folder_name: 'sakuragi_mano'
+        }],
+        close: async () => calls.push('close-story')
+    };
+    const manifest = await runWikiMediaSync(
+        { upload: false, uploadExisting: false },
+        {
+            openStoryRepository: async () => {
+                calls.push('open-story');
+                return storyRepository;
+            },
+            resolveStorage: async () => {
+                calls.push('resolve-storage');
+                throw new Error('storage must not be initialized');
+            },
+            closeStorage: async () => calls.push('close-storage'),
+            syncWikiMedia: async (_options, index, storage) => {
+                calls.push('crawl');
+                assert.equal(index.size, 1);
+                assert.equal(storage, undefined);
+                return { complete: true, summary: { assetCount: 0 } };
+            }
+        }
+    );
+
+    assert.equal(manifest.complete, true);
+    assert.deepEqual(calls, ['open-story', 'crawl', 'close-story']);
+});
+
+test('Wiki media upload reuses storage and closes resources after failure', async () => {
+    const calls = [];
+    const storage = { name: 'test-storage' };
+    const storyRepository = {
+        listIdolsWithAgencies: async () => [{
+            agency_code: 'sc',
+            agency_name: '闪耀色彩',
+            name_cn: '樱木真乃',
+            folder_name: 'sakuragi_mano'
+        }],
+        close: async () => calls.push('close-story')
+    };
+
+    await assert.rejects(
+        runWikiMediaSync(
+            { upload: true, uploadExisting: false },
+            {
+                openStoryRepository: async () => storyRepository,
+                resolveStorage: async () => {
+                    calls.push('resolve-storage');
+                    return storage;
+                },
+                closeStorage: async () => calls.push('close-storage'),
+                syncWikiMedia: async (_options, _index, receivedStorage) => {
+                    calls.push('crawl');
+                    assert.equal(receivedStorage, storage);
+                    throw new Error('crawl failed');
+                }
+            }
+        ),
+        /crawl failed/
+    );
+    assert.deepEqual(calls, [
+        'resolve-storage',
+        'crawl',
+        'close-story',
+        'close-storage'
+    ]);
 });
 
 test('Wiki media sync maps source paths to stable business object keys', () => {

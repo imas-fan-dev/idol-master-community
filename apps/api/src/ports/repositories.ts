@@ -1,6 +1,6 @@
 export type AdminRole = 'admin' | 'super_admin';
 
-export interface UserRecord {
+export interface BackofficeAccountRecord {
     id: number;
     username: string;
     password: string;
@@ -22,9 +22,9 @@ export interface NewAdminAccountInput {
     producername: string;
 }
 
-export interface RefreshSessionRecord {
+export interface BackofficeRefreshSessionRecord {
     id: string;
-    user_id: number;
+    account_id: number;
     token_hash: string;
     previous_token_hash: string | null;
     csrf_hash: string;
@@ -34,20 +34,20 @@ export interface RefreshSessionRecord {
     revoked_at: number | null;
 }
 
-export interface NewRefreshSessionInput {
+export interface NewBackofficeRefreshSessionInput {
     id: string;
-    userId: number;
+    accountId: number;
     tokenHash: string;
     csrfHash: string;
     expiresAt: number;
     createdAt: number;
 }
 
-export interface AuthRepository {
-    findUserByUsername(username: string): Promise<UserRecord | null>;
-    findUserById(id: number): Promise<UserRecord | null>;
-    createRefreshSession(input: NewRefreshSessionInput): Promise<void>;
-    findRefreshSessionByTokenHash(tokenHash: string): Promise<RefreshSessionRecord | null>;
+export interface BackofficeAuthRepository {
+    findUserByUsername(username: string): Promise<BackofficeAccountRecord | null>;
+    findUserById(id: number): Promise<BackofficeAccountRecord | null>;
+    createRefreshSession(input: NewBackofficeRefreshSessionInput): Promise<void>;
+    findRefreshSessionByTokenHash(tokenHash: string): Promise<BackofficeRefreshSessionRecord | null>;
     rotateRefreshSession(input: {
         id: string;
         currentTokenHash: string;
@@ -63,7 +63,846 @@ export interface AdminAccountRepository {
     ensureSuperAdmin(username?: string): Promise<void>;
     listAdminAccounts(): Promise<AdminAccountRecord[]>;
     createAdminAccount(input: NewAdminAccountInput): Promise<AdminAccountRecord>;
-    deleteAdminAccount(id: number): Promise<boolean>;
+    deleteAdminAccount(id: number): Promise<DeleteAdminAccountResult>;
+}
+
+export type DeleteAdminAccountResult =
+    | 'deleted'
+    | 'moderation-history'
+    | 'not-deletable';
+
+export type PlatformAccountStatus = 'active' | 'restricted' | 'suspended' | 'deleted';
+
+export interface PlatformAccountRecord {
+    id: string;
+    status: PlatformAccountStatus;
+    token_version: number;
+    created_at: number;
+    updated_at: number;
+    deleted_at: number | null;
+}
+
+export interface PlatformProfileRecord {
+    account_id: string;
+    display_name: string;
+    avatar_object_key: string | null;
+    avatar_external_url: string | null;
+    home_city: string | null;
+    bio: string;
+    updated_at: number;
+}
+
+export interface PlatformAccountWithProfile {
+    account: PlatformAccountRecord;
+    profile: PlatformProfileRecord;
+}
+
+export type PlatformEmailCredentialAlgorithm = 'pbkdf2-sha256' | 'bcrypt';
+
+export interface PlatformEmailCredentialRecord {
+    normalized_email: string;
+    account_id: string;
+    algorithm: PlatformEmailCredentialAlgorithm;
+    parameters_json: string;
+    salt: string | null;
+    password_hash: string;
+    created_at: number;
+    updated_at: number;
+}
+
+export interface PlatformEmailIdentity extends PlatformAccountWithProfile {
+    credential: PlatformEmailCredentialRecord;
+}
+
+export interface NewPlatformAccountInput {
+    id: string;
+    status: PlatformAccountStatus;
+    tokenVersion: number;
+    createdAt: number;
+    updatedAt: number;
+    deletedAt: number | null;
+    profile: {
+        displayName: string;
+        avatarObjectKey: string | null;
+        avatarExternalUrl: string | null;
+        homeCity: string | null;
+        bio: string;
+        updatedAt: number;
+    };
+}
+
+export interface NewPlatformEmailAccountInput extends NewPlatformAccountInput {
+    credential: {
+        normalizedEmail: string;
+        algorithm: 'bcrypt';
+        parametersJson: string;
+        passwordHash: string;
+        createdAt: number;
+        updatedAt: number;
+    };
+}
+
+export type CreatePlatformEmailAccountResult =
+    | { status: 'created'; identity: PlatformAccountWithProfile }
+    | { status: 'email-conflict' };
+
+export interface PlatformEmailVerificationInput {
+    normalizedEmail: string;
+    deliveryToken: string;
+    codeHash: string;
+    expiresAt: number;
+    resendAfter: number;
+    attemptsRemaining: number;
+    createdAt: number;
+}
+
+export type IssuePlatformEmailVerificationResult =
+    | { status: 'issued' }
+    | { status: 'cooldown'; retryAfterMs: number };
+
+export interface NewVerifiedPlatformEmailAccountInput
+    extends NewPlatformEmailAccountInput {
+    verification: {
+        codeHash: string;
+        consumedToken: string;
+        verifiedAt: number;
+    };
+}
+
+export type CreateVerifiedPlatformEmailAccountResult =
+    | CreatePlatformEmailAccountResult
+    | { status: 'verification-invalid' };
+
+export interface UpdatePlatformProfileTextInput {
+    accountId: string;
+    displayName: string;
+    homeCity: string | null;
+    bio: string;
+    expectedUpdatedAt: number;
+    updatedAt: number;
+}
+
+export interface UpdatePlatformProfileAvatarInput {
+    accountId: string;
+    avatarObjectKey: string | null;
+    expectedUpdatedAt: number;
+    updatedAt: number;
+}
+
+export type PlatformProfileSaveResult =
+    | {
+        status: 'saved';
+        profile: PlatformProfileRecord;
+        previousAvatarObjectKey: string | null;
+    }
+    | { status: 'conflict'; updatedAt: number }
+    | { status: 'unavailable' };
+
+export interface PlatformRefreshSessionRecord {
+    id: string;
+    account_id: string;
+    token_hash: string;
+    previous_token_hash: string | null;
+    csrf_hash: string;
+    expires_at: number;
+    created_at: number;
+    updated_at: number;
+    revoked_at: number | null;
+}
+
+export type PlatformSecurityEventType =
+    | 'auth.session.created'
+    | 'auth.refresh.succeeded'
+    | 'auth.refresh.replay'
+    | 'auth.logout'
+    | 'auth.account_blocked';
+
+export interface PlatformSecurityEventInput {
+    id: string;
+    accountId: string;
+    eventType: PlatformSecurityEventType;
+    requestId: string | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    metadataJson: string;
+    createdAt: number;
+}
+
+export interface NewPlatformRefreshSessionInput {
+    id: string;
+    accountId: string;
+    accountTokenVersion: number;
+    tokenHash: string;
+    csrfHash: string;
+    expiresAt: number;
+    createdAt: number;
+    event: PlatformSecurityEventInput;
+}
+
+export interface PlatformAccountRepository {
+    createAccountWithProfile(
+        input: NewPlatformAccountInput
+    ): Promise<PlatformAccountWithProfile>;
+    findAccountById(id: string): Promise<PlatformAccountRecord | null>;
+    findAccountWithProfileById(id: string): Promise<PlatformAccountWithProfile | null>;
+    createEmailAccount(
+        input: NewPlatformEmailAccountInput
+    ): Promise<CreatePlatformEmailAccountResult>;
+    issueEmailVerification(
+        input: PlatformEmailVerificationInput
+    ): Promise<IssuePlatformEmailVerificationResult>;
+    completeEmailVerificationDelivery(
+        normalizedEmail: string,
+        deliveryToken: string
+    ): Promise<boolean>;
+    revokeEmailVerification(
+        normalizedEmail: string,
+        deliveryToken: string
+    ): Promise<void>;
+    createVerifiedEmailAccount(
+        input: NewVerifiedPlatformEmailAccountInput
+    ): Promise<CreateVerifiedPlatformEmailAccountResult>;
+    findEmailIdentity(normalizedEmail: string): Promise<PlatformEmailIdentity | null>;
+    upgradeEmailCredentialToBcrypt(input: {
+        normalizedEmail: string;
+        expectedAlgorithm: 'pbkdf2-sha256';
+        expectedPasswordHash: string;
+        expectedUpdatedAt: number;
+        passwordHash: string;
+        parametersJson: string;
+        updatedAt: number;
+    }): Promise<boolean>;
+    updateProfileTextForOwner(
+        input: UpdatePlatformProfileTextInput
+    ): Promise<PlatformProfileSaveResult>;
+    updateProfileAvatarForOwner(
+        input: UpdatePlatformProfileAvatarInput
+    ): Promise<PlatformProfileSaveResult>;
+    createRefreshSession(input: NewPlatformRefreshSessionInput): Promise<boolean>;
+    findRefreshSessionById(id: string): Promise<PlatformRefreshSessionRecord | null>;
+    findRefreshSessionByTokenHash(
+        tokenHash: string
+    ): Promise<PlatformRefreshSessionRecord | null>;
+    rotateRefreshSession(input: {
+        id: string;
+        accountTokenVersion: number;
+        currentTokenHash: string;
+        nextTokenHash: string;
+        nextCsrfHash: string;
+        nextExpiresAt: number;
+        updatedAt: number;
+        event: PlatformSecurityEventInput;
+    }): Promise<boolean>;
+    revokeRefreshSession(input: {
+        id: string;
+        accountId: string;
+        revokedAt: number;
+        event: PlatformSecurityEventInput;
+    }): Promise<boolean>;
+    revokeRefreshSessionForReplay(input: {
+        id: string;
+        accountId: string;
+        replayedTokenHash: string;
+        revokedAt: number;
+        event: PlatformSecurityEventInput;
+    }): Promise<boolean>;
+    deleteExpiredRefreshSessions(now: number): Promise<void>;
+}
+
+export type FudabaOfficeStatus = 'active' | 'hidden' | 'archived';
+export type FudabaCardPublicationStatus =
+    | 'draft'
+    | 'pending'
+    | 'published'
+    | 'hidden'
+    | 'rejected';
+export type FudabaMediaRightsStatus = 'unknown' | 'approved' | 'denied';
+export type FudabaExchangeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+export type FudabaModerationResourceKind =
+    | 'account'
+    | 'office'
+    | 'card'
+    | 'message'
+    | 'exchange';
+export type FudabaModerationState =
+    | 'open'
+    | 'reviewing'
+    | 'resolved'
+    | 'dismissed'
+    | 'appealed';
+
+export interface FudabaOfficeRecord {
+    id: string;
+    owner_account_id: string;
+    slug: string;
+    name: string;
+    intro: string;
+    city: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    accent: string;
+    cover_object_key: string | null;
+    pending_cover_object_key: string | null;
+    pending_cover_submitted_at: string | null;
+    is_open: boolean;
+    visitor_count: number;
+    status: FudabaOfficeStatus;
+    revision: number;
+    created_at: string;
+    updated_at: string;
+    archived_at: string | null;
+}
+
+export interface FudabaOwnerOfficeRecord extends FudabaOfficeRecord {
+    series_codes: string[];
+}
+
+export interface NewFudabaOfficeInput {
+    id: string;
+    ownerAccountId: string;
+    slug: string;
+    name: string;
+    intro: string;
+    city: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    accent: string;
+    coverObjectKey: string | null;
+    isOpen: boolean;
+    visitorCount: number;
+    status: FudabaOfficeStatus;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    archivedAt: string | null;
+    seriesCodes: string[];
+}
+
+export interface CreateOwnedFudabaOfficeInput extends NewFudabaOfficeInput {
+    idempotencyKeyHash: string;
+    requestHash: string;
+    receiptCreatedAt: number;
+}
+
+export interface UpdateOwnedFudabaOfficeInput {
+    officeId: string;
+    ownerAccountId: string;
+    name: string;
+    intro: string;
+    city: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    accent: string;
+    isOpen: boolean;
+    seriesCodes: string[];
+    expectedRevision: number;
+    updatedAt: string;
+}
+
+export type FudabaOfficeMutationResult =
+    | {
+        status: 'saved';
+        office: FudabaOwnerOfficeRecord;
+        previousPendingObjectKey: string | null;
+    }
+    | { status: 'conflict'; revision: number }
+    | { status: 'pending-exists'; revision: number }
+    | {
+        status: 'state-conflict';
+        revision: number;
+        officeStatus: FudabaOfficeStatus;
+    }
+    | { status: 'unavailable' };
+
+export type FudabaOfficeCreateResult =
+    | FudabaOfficeMutationResult
+    | { status: 'idempotency-conflict' };
+
+export interface FudabaCardRecord {
+    id: string;
+    owner_account_id: string;
+    producer_name: string;
+    display_name: string;
+    series_code: string;
+    favorite_idol: string;
+    front_object_key: string;
+    back_object_key: string;
+    accent: string;
+    bio: string;
+    trade_note: string;
+    available: boolean;
+    source_url: string | null;
+    source_label: string | null;
+    source_credit: string | null;
+    media_rights_status: FudabaMediaRightsStatus;
+    publication_status: FudabaCardPublicationStatus;
+    revision: number;
+    created_at: string;
+    updated_at: string;
+    deleted_at: string | null;
+}
+
+export interface NewFudabaCardInput {
+    id: string;
+    ownerAccountId: string;
+    producerName: string;
+    displayName: string;
+    seriesCode: string;
+    favoriteIdol: string;
+    frontObjectKey: string;
+    backObjectKey: string;
+    accent: string;
+    bio: string;
+    tradeNote: string;
+    available: boolean;
+    sourceUrl: string | null;
+    sourceLabel: string | null;
+    sourceCredit: string | null;
+    mediaRightsStatus: FudabaMediaRightsStatus;
+    publicationStatus: FudabaCardPublicationStatus;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt: string | null;
+}
+
+export interface CreateOwnedFudabaCardInput {
+    id: string;
+    ownerAccountId: string;
+    producerName: string;
+    displayName: string;
+    seriesCode: string;
+    favoriteIdol: string;
+    frontObjectKey: string;
+    backObjectKey: string;
+    accent: string;
+    bio: string;
+    tradeNote: string;
+    available: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface UpdateOwnedFudabaCardMetadataInput {
+    cardId: string;
+    ownerAccountId: string;
+    producerName: string;
+    displayName: string;
+    seriesCode: string;
+    favoriteIdol: string;
+    accent: string;
+    bio: string;
+    tradeNote: string;
+    available: boolean;
+    expectedRevision: number;
+    updatedAt: string;
+}
+
+export interface UpdateOwnedFudabaCardMediaInput {
+    cardId: string;
+    ownerAccountId: string;
+    side: 'front' | 'back';
+    objectKey: string;
+    expectedRevision: number;
+    updatedAt: string;
+}
+
+export interface SoftDeleteOwnedFudabaCardInput {
+    cardId: string;
+    ownerAccountId: string;
+    expectedRevision: number;
+    deletedAt: string;
+}
+
+export type FudabaCardMutationResult =
+    | {
+        status: 'saved';
+        card: FudabaCardRecord;
+        previousObjectKey: string | null;
+    }
+    | { status: 'conflict'; revision: number }
+    | { status: 'unavailable' };
+
+export interface FudabaExchangeRequestRecord {
+    id: string;
+    office_id: string;
+    requester_account_id: string;
+    recipient_account_id: string;
+    wanted_card_id: string;
+    offered_card_id: string | null;
+    note: string;
+    status: FudabaExchangeStatus;
+    version: number;
+    created_at: string;
+    updated_at: string;
+    resolved_at: string | null;
+}
+
+export interface NewFudabaModerationCaseInput {
+    id: string;
+    resourceKind: FudabaModerationResourceKind;
+    resourceId: string;
+    reporterAccountId: string | null;
+    reason: string;
+    details: string;
+    state: FudabaModerationState;
+    backofficeActorId: number | null;
+    resolution: string;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt: string | null;
+}
+
+export interface FudabaModerationCaseRecord {
+    id: string;
+    resource_kind: FudabaModerationResourceKind;
+    resource_id: string;
+    reporter_account_id: string | null;
+    reason: string;
+    details: string;
+    state: FudabaModerationState;
+    backoffice_actor_id: number | null;
+    resolution: string;
+    created_at: string;
+    updated_at: string;
+    resolved_at: string | null;
+}
+
+export interface FudabaPublicSeriesRecord {
+    id: number;
+    code: string;
+    display_name: string;
+    color: string;
+    display_order: number;
+    icon_object_key: string | null;
+    image_transform: WikiImageTransform;
+    active_office_count: number;
+}
+
+export interface FudabaPublicOfficeRecord {
+    id: string;
+    slug: string;
+    name: string;
+    intro: string;
+    city: string;
+    accent: string;
+    cover_object_key: string | null;
+    is_open: boolean;
+    visitor_count: number;
+    series_codes: string[];
+}
+
+export interface FudabaPublicOfficeCursor {
+    visitorCount: number;
+    id: string;
+}
+
+export interface ListFudabaPublicOfficesInput {
+    city?: string;
+    seriesCode?: string;
+    isOpen?: boolean;
+    limit: number;
+    after?: FudabaPublicOfficeCursor;
+}
+
+export type FudabaLocationReviewState = 'pending' | 'published' | 'rejected';
+
+export interface FudabaOfficePublicLocationRecord {
+    office_id: string;
+    latitude_e1: number;
+    longitude_e1: number;
+    review_state: FudabaLocationReviewState;
+    revision: number;
+    submitted_at: string;
+    reviewed_at: string | null;
+    reviewed_by: number | null;
+    review_note: string;
+}
+
+export interface FudabaPublicMapOfficeRecord {
+    id: string;
+    slug: string;
+    name: string;
+    city: string;
+    accent: string;
+    is_open: boolean;
+    series_codes: string[];
+    latitude_e1: number;
+    longitude_e1: number;
+}
+
+export interface ListFudabaPublicMapOfficesInput {
+    bbox: {
+        westE1: number;
+        southE1: number;
+        eastE1: number;
+        northE1: number;
+    };
+    city?: string;
+    seriesCode?: string;
+    isOpen?: boolean;
+    limit: number;
+}
+
+export interface FudabaOfficeLocationReviewRecord
+    extends FudabaOfficePublicLocationRecord {
+    office_name: string;
+    office_city: string;
+    owner_account_id: string;
+}
+
+export type FudabaOfficeLocationMutationResult =
+    | { status: 'saved'; location: FudabaOfficePublicLocationRecord }
+    | { status: 'conflict'; revision: number }
+    | { status: 'unavailable' };
+
+export interface FudabaPublicCardRecord {
+    id: string;
+    producer_name: string;
+    display_name: string;
+    series_code: string;
+    favorite_idol: string;
+    front_object_key: string;
+    back_object_key: string;
+    accent: string;
+    bio: string;
+    trade_note: string;
+    available: boolean;
+    source_url: string | null;
+    source_label: string | null;
+    source_credit: string | null;
+    created_at: string;
+    like_count: number;
+    favorite_count: number;
+    viewer_liked: boolean;
+    viewer_favorited: boolean;
+}
+
+export interface FudabaPublicPlacedCardRecord extends FudabaPublicCardRecord {
+    pinned_at: string;
+    position_x: number;
+    position_y: number;
+    rotation: number;
+    z_index: number;
+    revision: number;
+    updated_at: string;
+    viewer_owned: boolean;
+}
+
+export interface FudabaCardPlacementRecord {
+    office_id: string;
+    card_id: string;
+    pinned_at: string;
+    position_x: number;
+    position_y: number;
+    rotation: number;
+    z_index: number;
+    revision: number;
+    updated_at: string;
+}
+
+export type FudabaCardPlacementSaveResult =
+    | {
+        status: 'saved';
+        placement: FudabaCardPlacementRecord;
+        created: boolean;
+    }
+    | { status: 'conflict'; revision: number }
+    | { status: 'unavailable' };
+
+export type FudabaCardPlacementRemovalResult =
+    | { status: 'removed'; revision: number }
+    | { status: 'conflict'; revision: number }
+    | { status: 'in-use'; revision: number }
+    | { status: 'unavailable' };
+
+export interface FudabaPublicOfficeDetailRecord extends FudabaPublicOfficeRecord {
+    cards: FudabaPublicPlacedCardRecord[];
+}
+
+export interface FudabaPublicCardCursor {
+    createdAt: string;
+    id: string;
+}
+
+export interface ListFudabaPublicCardsInput {
+    seriesCode?: string;
+    available?: boolean;
+    officeSlug?: string;
+    viewerAccountId: string | null;
+    limit: number;
+    after?: FudabaPublicCardCursor;
+}
+
+export interface FudabaRepository {
+    listPublicSeries(): Promise<FudabaPublicSeriesRecord[]>;
+    listPublicOffices(
+        input: ListFudabaPublicOfficesInput
+    ): Promise<FudabaPublicOfficeRecord[]>;
+    listPublicMapOffices(
+        input: ListFudabaPublicMapOfficesInput
+    ): Promise<FudabaPublicMapOfficeRecord[]>;
+    findPublicOfficeBySlug(
+        slug: string,
+        viewerAccountId: string | null
+    ): Promise<FudabaPublicOfficeDetailRecord | null>;
+    listPublicCards(
+        input: ListFudabaPublicCardsInput
+    ): Promise<FudabaPublicCardRecord[]>;
+    createOffice(input: NewFudabaOfficeInput): Promise<FudabaOfficeRecord>;
+    findOfficeById(id: string): Promise<FudabaOfficeRecord | null>;
+    listOfficesForOwner(ownerAccountId: string): Promise<FudabaOwnerOfficeRecord[]>;
+    findOfficeForOwner(
+        officeId: string,
+        ownerAccountId: string
+    ): Promise<FudabaOwnerOfficeRecord | null>;
+    createOfficeForOwner(
+        input: CreateOwnedFudabaOfficeInput
+    ): Promise<FudabaOfficeCreateResult>;
+    updateOfficeForOwner(
+        input: UpdateOwnedFudabaOfficeInput
+    ): Promise<FudabaOfficeMutationResult>;
+    archiveOfficeForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        expectedRevision: number;
+        archivedAt: string;
+    }): Promise<FudabaOfficeMutationResult>;
+    restoreOfficeForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        expectedRevision: number;
+        restoredAt: string;
+    }): Promise<FudabaOfficeMutationResult>;
+    reservePendingOfficeCoverForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        objectKey: string;
+        expectedRevision: number;
+        submittedAt: string;
+    }): Promise<FudabaOfficeMutationResult>;
+    clearPendingOfficeCoverForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        objectKey: string;
+        expectedRevision: number;
+        updatedAt: string;
+    }): Promise<FudabaOfficeMutationResult>;
+    updateOfficeStatusForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        status: FudabaOfficeStatus;
+        archivedAt: string | null;
+        updatedAt: string;
+        expectedRevision: number;
+    }): Promise<boolean>;
+    findOfficePublicLocationForOwner(
+        officeId: string,
+        ownerAccountId: string
+    ): Promise<FudabaOfficePublicLocationRecord | null>;
+    saveOfficePublicLocationForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        latitudeE1: number;
+        longitudeE1: number;
+        expectedRevision: number | null;
+        submittedAt: string;
+    }): Promise<FudabaOfficeLocationMutationResult>;
+    withdrawOfficePublicLocationForOwner(input: {
+        officeId: string;
+        ownerAccountId: string;
+        expectedRevision: number;
+    }): Promise<FudabaOfficeLocationMutationResult>;
+    listOfficeLocationReviews(input: {
+        reviewState?: FudabaLocationReviewState;
+        limit: number;
+    }): Promise<FudabaOfficeLocationReviewRecord[]>;
+    reviewOfficePublicLocation(input: {
+        officeId: string;
+        decision: 'publish' | 'reject';
+        expectedRevision: number;
+        reviewedAt: string;
+        reviewedBy: number;
+        reviewNote: string;
+        reviewOperationId: string;
+        audit: AuditLogInput;
+    }): Promise<FudabaOfficeLocationMutationResult>;
+    createCard(input: NewFudabaCardInput): Promise<FudabaCardRecord>;
+    findCardById(id: string): Promise<FudabaCardRecord | null>;
+    listCardsForOwner(ownerAccountId: string): Promise<FudabaCardRecord[]>;
+    findCardForOwner(
+        cardId: string,
+        ownerAccountId: string
+    ): Promise<FudabaCardRecord | null>;
+    createCardForOwner(
+        input: CreateOwnedFudabaCardInput
+    ): Promise<FudabaCardMutationResult>;
+    updateCardMetadataForOwner(
+        input: UpdateOwnedFudabaCardMetadataInput
+    ): Promise<FudabaCardMutationResult>;
+    updateCardMediaForOwner(
+        input: UpdateOwnedFudabaCardMediaInput
+    ): Promise<FudabaCardMutationResult>;
+    softDeleteCardForOwner(
+        input: SoftDeleteOwnedFudabaCardInput
+    ): Promise<FudabaCardMutationResult>;
+    placeOwnedCard(input: {
+        officeId: string;
+        cardId: string;
+        ownerAccountId: string;
+        pinnedAt: string;
+        positionX: number;
+        positionY: number;
+        rotation: number;
+        zIndex: number;
+    }): Promise<boolean>;
+    saveCardPlacementForOwner(input: {
+        officeId: string;
+        cardId: string;
+        ownerAccountId: string;
+        positionX: number;
+        positionY: number;
+        rotation: number;
+        zIndex: number;
+        expectedRevision: number | null;
+        updatedAt: string;
+    }): Promise<FudabaCardPlacementSaveResult>;
+    removeCardPlacementForOwner(input: {
+        officeId: string;
+        cardId: string;
+        ownerAccountId: string;
+        expectedRevision: number;
+    }): Promise<FudabaCardPlacementRemovalResult>;
+    createMessage(input: {
+        id: string;
+        officeId: string;
+        authorAccountId: string;
+        content: string;
+        createdAt: string;
+    }): Promise<boolean>;
+    createExchangeRequest(input: {
+        id: string;
+        officeId: string;
+        requesterAccountId: string;
+        recipientAccountId: string;
+        wantedCardId: string;
+        offeredCardId: string | null;
+        note: string;
+        createdAt: string;
+    }): Promise<FudabaExchangeRequestRecord | null>;
+    setCardInteraction(input: {
+        kind: 'like' | 'favorite';
+        cardId: string;
+        accountId: string;
+        active: boolean;
+        createdAt: string;
+    }): Promise<boolean>;
+    createModerationCase(
+        input: NewFudabaModerationCaseInput
+    ): Promise<FudabaModerationCaseRecord>;
 }
 
 export interface AuditLogInput {
@@ -903,8 +1742,10 @@ export interface StoryRepository {
 }
 
 export interface RepositoryServices {
-    auth: AuthRepository;
+    backofficeAuth: BackofficeAuthRepository;
     adminAccounts: AdminAccountRepository;
+    platformAccounts: PlatformAccountRepository;
+    fudaba: FudabaRepository;
     audit: AuditRepository;
     news: NewsRepository;
     events: EventRepository;

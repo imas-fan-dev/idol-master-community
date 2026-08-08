@@ -158,6 +158,7 @@ class OperationsDocumentationTests(unittest.TestCase):
         deploy_environment = DEPLOY_ENVIRONMENT.read_text(encoding="utf-8")
 
         for token in (
+            "IMS_BACKOFFICE_JWT_SECRET",
             "IMS_JWT_SECRET",
             "IMS_SUPER_ADMIN_USERNAME",
             "IMS_OBJECT_STORAGE",
@@ -182,6 +183,7 @@ class OperationsDocumentationTests(unittest.TestCase):
         self.assertNotIn("IMS_NGINX_IMAGE", api_environment)
         self.assertNotIn("IMS_NGINX_IMAGE", deploy_environment)
         self.assertNotIn("IMS_NODE_UPSTREAM", deploy_environment)
+        self.assertNotIn("IMS_BACKOFFICE_JWT_SECRET", web_environment)
         self.assertNotIn("IMS_JWT_SECRET", web_environment)
         self.assertNotIn("IMS_LEGACY", deploy_environment)
 

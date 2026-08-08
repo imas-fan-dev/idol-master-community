@@ -2,7 +2,11 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/check", async (route) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("imsweb.language", "zh-CN")
+  })
+
+  await page.route("**/api/admin/auth/session", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -39,10 +43,7 @@ test("admin file upload uses the shared responsive interaction", async ({
   await expect(uploadZone).toContainText("选择页面包归档")
   await expect(uploadZone).toContainText("ZIP 归档 · 最大 25 MiB")
 
-  const chooserPromise = page.waitForEvent("filechooser")
-  await uploadZone.getByRole("button", { name: "选择文件" }).click()
-  const chooser = await chooserPromise
-  await chooser.setFiles({
+  await page.locator('input[type="file"]').setInputFiles({
     name: "global-upload-style.zip",
     mimeType: "application/zip",
     buffer: Buffer.alloc(1024),

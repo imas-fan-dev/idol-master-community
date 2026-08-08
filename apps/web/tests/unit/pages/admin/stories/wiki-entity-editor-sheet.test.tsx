@@ -38,7 +38,7 @@ function TestI18nProvider({ children }: { children: ReactNode }) {
 describe("WikiEntityEditorDialog", () => {
   beforeEach(async () => {
     await i18n.changeLanguage(defaultLanguage)
-    document.cookie = "csrf_token=wiki-entity-editor-test; path=/"
+    document.cookie = "ims_admin_csrf=wiki-entity-editor-test; path=/"
   })
 
   afterEach(() => {

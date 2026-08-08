@@ -33,8 +33,8 @@ const LEGACY_INFORMATION_CARDS = [
         contentType: 'external',
         title: '广州偶像大师 ONLY',
         image: '/uploads/information/original/guangzhou2026.png',
-        link: '/',
-        updatedAt: MIGRATED_AT
+        link: 'https://show.bilibili.com/platform/detail.html?id=1002732&from=pc_search',
+        updatedAt: '2026-07-24T18:44:41.927Z'
     },
     {
         source: 'assets/images/Information/ife2.png',

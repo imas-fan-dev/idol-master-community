@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test"
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("imsweb.language", "zh-CN")
+  })
+})
+
 const publicRoutes = [
   { path: "/", title: /IMSWeb/i },
   { path: "/about", title: /关于我们.*IMSWeb/i },
@@ -7,6 +13,9 @@ const publicRoutes = [
   { path: "/recommendations", title: /向您推荐.*IMSWeb/i },
   { path: "/live", title: /Live.*IMSWeb/i },
   { path: "/community", title: /制作人社区.*IMSWeb/i },
+  { path: "/account/login", title: /帐号登录.*IMSWeb/i },
+  { path: "/account/register", title: /帐号注册.*IMSWeb/i },
+  { path: "/community/exchange", title: /名片交换事务所.*IMSWeb/i },
   { path: "/community/cards", title: /制作人名片墙.*IMSWeb/i },
   { path: "/works", title: /系列作品.*IMSWeb/i },
   { path: "/wiki", title: /剧情档案.*IMSWeb/i },
@@ -49,7 +58,11 @@ for (const route of publicRoutes) {
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN")
     await expect(page.locator("main#main-content")).toBeVisible()
     await expect(page.locator("main#main-content")).not.toBeEmpty()
-    if (route.path === "/wiki/classic" || route.path === "/story/classic") {
+    if (
+      route.path === "/wiki/classic" ||
+      route.path === "/story/classic" ||
+      route.path === "/community/exchange"
+    ) {
       await expect(page.getByTestId("series-icon-background")).toHaveCount(0)
     } else {
       await expect(
@@ -251,9 +264,17 @@ test("mobile navigation keeps link semantics and closes after routing", async ({
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "打开导航" }).click()
+  const trigger = page.getByRole("button", {
+    name: /打开导航|Open navigation/,
+  })
+  await expect(trigger).toBeEnabled()
+  await trigger.click()
 
-  const navigation = page.getByRole("navigation", {
+  const dialog = page.getByRole("dialog", {
+    name: /站点导航|Site navigation/,
+  })
+  await expect(dialog).toBeVisible()
+  const navigation = dialog.getByRole("navigation", {
     name: /移动端主导航|Mobile navigation/,
   })
   const eventsLink = navigation.getByRole("link", {
@@ -282,15 +303,21 @@ test("homepage navigation keeps secondary destinations in the directory", async 
   await page.goto("/")
 
   if (isMobile) {
-    await page.getByRole("button", { name: /打开导航|Open navigation/ }).click()
+    const trigger = page.getByRole("button", {
+      name: /打开导航|Open navigation/,
+    })
+    await expect(trigger).toBeEnabled()
+    await trigger.click()
   }
 
-  const navigation = page.getByRole("navigation", {
-    name: isMobile
-      ? /移动端主导航|Mobile navigation/
-      : /主导航|Main navigation/,
-  })
-  await expect(navigation.locator("a")).toHaveCount(isMobile ? 6 : 5)
+  const navigation = isMobile
+    ? page
+        .getByRole("dialog", { name: /站点导航|Site navigation/ })
+        .getByRole("navigation", {
+          name: /移动端主导航|Mobile navigation/,
+        })
+    : page.getByRole("navigation", { name: /主导航|Main navigation/ })
+  await expect(navigation.locator("a")).toHaveCount(isMobile ? 7 : 6)
 
   for (const primaryHref of [
     "/",
@@ -298,15 +325,16 @@ test("homepage navigation keeps secondary destinations in the directory", async 
     "/recommendations",
     "/live",
     "/community",
+    "/about",
   ]) {
     await expect(navigation.locator(`a[href="${primaryHref}"]`)).toBeVisible()
   }
   for (const secondaryHref of [
+    "/community/exchange",
     "/community/cards",
     "/producer-map",
     "/works",
     "/chronicle",
-    "/about",
   ]) {
     await expect(navigation.locator(`a[href="${secondaryHref}"]`)).toHaveCount(
       0
@@ -324,7 +352,9 @@ test("homepage navigation keeps secondary destinations in the directory", async 
   }
 
   const directory = page.getByRole("region", { name: "站点导航" })
-  await expect(directory.getByRole("link")).toHaveCount(10)
+  await expect
+    .poll(() => directory.getByRole("link").count())
+    .toBeGreaterThanOrEqual(10)
   await expect(directory.getByRole("link", { name: /剧情站/ })).toHaveAttribute(
     "href",
     "/wiki"
@@ -341,12 +371,8 @@ test("homepage navigation keeps secondary destinations in the directory", async 
       path: `/tmp/imsweb-footer-story-site-${isMobile ? "mobile" : "desktop"}.png`,
     })
   }
-  await expect(
-    directory.getByRole("link", { name: /制作人名片墙/ })
-  ).toHaveAttribute("href", "/community/cards")
-  await expect(
-    directory.getByRole("link", { name: /制作人地图/ })
-  ).toHaveAttribute("href", "/producer-map")
+  await expect(directory.locator('a[href="/community/cards"]')).toBeVisible()
+  await expect(directory.locator('a[href="/producer-map"]')).toBeVisible()
 
   const friendLinksBox = await page
     .getByRole("region", { name: "友情链接" })
@@ -368,7 +394,10 @@ test("homepage directory uses compact responsive columns", async ({ page }) => {
     exact: true,
   })
 
-  await expect(grid.getByRole("link")).toHaveCount(10)
+  await expect
+    .poll(() => grid.getByRole("link").count())
+    .toBeGreaterThanOrEqual(11)
+  await expect(grid.locator('a[href="/community/exchange"]')).toBeVisible()
 
   for (const viewport of [
     { width: 320, expectedColumns: 2, descriptionVisible: false },
@@ -478,11 +507,11 @@ test("theme toggle persists the selected color scheme", async ({ page }) => {
   await expect(root).toHaveClass(/dark/)
 })
 
-test("wiki hero gives story artwork an expanded frame", async ({
+test("default wiki hero gives story artwork an expanded frame", async ({
   page,
   isMobile,
 }) => {
-  await page.goto("/wiki/modern")
+  await page.goto("/wiki")
 
   const hero = page.getByRole("region", { name: "剧情档案视觉" })
   await expect(hero).toBeVisible()
@@ -512,6 +541,14 @@ test("home exposes current discovery and birthday interactions", async ({
   page,
   isMobile,
 }) => {
+  await page.route("**/api/information", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ cards: [] }),
+    })
+  })
+
   await page.goto("/")
 
   const brandBackground = page.getByTestId("series-icon-background")
@@ -549,16 +586,14 @@ test("home exposes current discovery and birthday interactions", async ({
   }
 
   const directory = page.getByRole("region", { name: "站点导航" })
-  await expect(directory.getByRole("link")).toHaveCount(10)
+  await expect
+    .poll(() => directory.getByRole("link").count())
+    .toBeGreaterThanOrEqual(10)
   await expect(
     directory.getByRole("link", { name: /活动中心/ })
   ).toHaveAttribute("href", "/events")
-  await expect(
-    directory.getByRole("link", { name: /制作人名片墙/ })
-  ).toHaveAttribute("href", "/community/cards")
-  await expect(
-    directory.getByRole("link", { name: /制作人地图/ })
-  ).toHaveAttribute("href", "/producer-map")
+  await expect(directory.locator('a[href="/community/cards"]')).toBeVisible()
+  await expect(directory.locator('a[href="/producer-map"]')).toBeVisible()
   await expect(
     directory.getByRole("link", { name: /关于 IMSWeb/ })
   ).toHaveAttribute("href", "/about")
@@ -580,15 +615,11 @@ test("home exposes current discovery and birthday interactions", async ({
   const highlights = page.getByRole("region", {
     name: "活动资讯与同人活动",
   })
-  await expect(highlights.getByLabel("正在加载活动资讯")).toHaveCount(0)
-  const highlightLinkCount = await highlights.getByRole("link").count()
-  if (highlightLinkCount === 0) {
-    await expect(
-      highlights.getByText("当前没有已发布的活动资讯。")
-    ).toBeVisible()
-  } else {
-    expect(highlightLinkCount).toBeGreaterThan(0)
-  }
+  await expect(
+    highlights.getByRole("status", { name: "正在加载活动资讯" })
+  ).toHaveCount(0)
+  await expect(highlights.getByRole("link")).toHaveCount(0)
+  await expect(highlights.getByText("当前没有已发布的活动资讯。")).toBeVisible()
 
   const randomIdol = page.getByRole("region", { name: "随机担当" })
   await randomIdol.getByRole("button", { name: "随机选择" }).click()

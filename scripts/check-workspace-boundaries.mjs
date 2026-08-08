@@ -441,6 +441,10 @@ forbidPath(
   "environment templates must be owned by their runtime surface",
 );
 if (fs.existsSync(npmrcPath)) {
+  const allowedNpmRegistries = new Set([
+    "https://registry.npmjs.org/",
+    "https://registry.npmmirror.com/",
+  ]);
   const registrySettings = fs
     .readFileSync(npmrcPath, "utf8")
     .split(/\r?\n/)
@@ -452,12 +456,13 @@ if (fs.existsSync(npmrcPath)) {
     !registrySettings.length ||
     registrySettings.some(
       (line) =>
-        line.slice(line.indexOf("=") + 1).trim() !==
-        "https://registry.npmjs.org/",
+        !allowedNpmRegistries.has(
+          line.slice(line.indexOf("=") + 1).trim(),
+        ),
     )
   ) {
     failures.push(
-      ".npmrc: every configured registry must be https://registry.npmjs.org/",
+      `.npmrc: every configured registry must be one of ${[...allowedNpmRegistries].join(", ")}`,
     );
   }
 }

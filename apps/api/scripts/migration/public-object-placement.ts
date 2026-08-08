@@ -88,7 +88,7 @@ async function closeServices(services: NodeRuntimeServices): Promise<void> {
     await Promise.allSettled([
         services.storage.close?.(),
         services.story.close?.(),
-        (services.auth as { close?: () => Promise<void> }).close?.()
+        (services.backofficeAuth as { close?: () => Promise<void> }).close?.()
     ].filter((operation): operation is Promise<void> => Boolean(operation)));
 }
 

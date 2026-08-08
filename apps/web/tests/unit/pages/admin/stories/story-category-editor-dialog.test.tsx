@@ -24,7 +24,7 @@ function requestDetails(call: unknown[]) {
 
 describe("StoryCategoryEditorDialog", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=story-category-editor-test; path=/"
+    document.cookie = "ims_admin_csrf=story-category-editor-test; path=/"
   })
 
   afterEach(() => {

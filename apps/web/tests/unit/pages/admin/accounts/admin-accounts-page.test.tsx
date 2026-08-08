@@ -44,7 +44,7 @@ function requestFrom(input: RequestInfo | URL, init?: RequestInit) {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
-  document.cookie = "csrf_token=; Max-Age=0; path=/"
+  document.cookie = "ims_admin_csrf=; Max-Age=0; path=/"
 })
 
 describe("AdminAccountsPage", () => {
@@ -64,7 +64,7 @@ describe("AdminAccountsPage", () => {
   })
 
   it("lists roles and creates a regular administrator", async () => {
-    document.cookie = "csrf_token=account-csrf; path=/"
+    document.cookie = "ims_admin_csrf=account-csrf; path=/"
     const requests: Request[] = []
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -146,7 +146,7 @@ describe("AdminAccountsPage", () => {
   })
 
   it("confirms deletion of a regular administrator", async () => {
-    document.cookie = "csrf_token=delete-csrf; path=/"
+    document.cookie = "ims_admin_csrf=delete-csrf; path=/"
     const requests: Request[] = []
     vi.stubGlobal(
       "fetch",

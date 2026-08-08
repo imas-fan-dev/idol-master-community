@@ -101,7 +101,9 @@ function isMissing(error: unknown): boolean {
 
 function encodeMetadata(metadata: Record<string, string> | undefined): Record<string, string> {
     return Object.fromEntries(
-        Object.entries(metadata || {}).map(([key, value]) => [key, encodeURIComponent(value)])
+        Object.entries(metadata || {})
+            .filter(([key]) => key.toLowerCase() !== 'ownertoken')
+            .map(([key, value]) => [key, encodeURIComponent(value)])
     );
 }
 
@@ -287,7 +289,6 @@ export class S3ObjectStorage implements ObjectStorage {
             return null;
         }
         const contentType = options.contentType || contentTypeForPath(logicalKey);
-        let uploaded = false;
         try {
             const result = await this.client.send(new PutObjectCommand({
                 Bucket: this.options.bucket,
@@ -297,13 +298,9 @@ export class S3ObjectStorage implements ObjectStorage {
                 Metadata: {
                     ...encodeMetadata(options.metadata),
                     sha256: digest,
-                    logicalKey: encodeURIComponent(logicalKey),
-                    ...(options.ownerToken
-                        ? { ownerToken: encodeURIComponent(options.ownerToken) }
-                        : {})
+                    logicalKey: encodeURIComponent(logicalKey)
                 }
             }));
-            uploaded = true;
             const etag = result.ETag || `"${digest}"`;
             const completed = await this.state.completeUpload(operation, {
                 size: body.byteLength,
@@ -324,7 +321,7 @@ export class S3ObjectStorage implements ObjectStorage {
             return this.storedObject(body, contentType, etag, new Date());
         } catch (error) {
             await this.state.abortUpload(operation.id).catch(() => undefined);
-            if (uploaded) await this.cleanupPhysicalObject(objectId, error);
+            await this.cleanupPhysicalObject(objectId, error);
             throw error;
         }
     }

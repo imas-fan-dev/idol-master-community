@@ -141,6 +141,10 @@ test('legacy Information migration writes and verifies six images plus one store
         index.cards.find((card) => card.id === 'legacy-hiro2026').link,
         '/sites/hiro2026'
     );
+    assert.equal(
+        index.cards.find((card) => card.id === 'legacy-guangzhou2026').link,
+        'https://show.bilibili.com/platform/detail.html?id=1002732&from=pc_search'
+    );
 
     const repeated = await syncLegacyInformation(source, storage, true);
     assert.equal(repeated.indexStatus, 'unchanged');

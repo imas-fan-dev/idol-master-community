@@ -9,6 +9,17 @@ const scriptUrl = pathToFileURL(
 ).href;
 const launcher = import(scriptUrl);
 
+function assertIsolatedPlatformSecret(configuration) {
+  const platformSecret = configuration.apiEnvironment.IMS_PLATFORM_JWT_SECRET;
+  assert.equal(typeof platformSecret, "string");
+  assert.equal(Buffer.byteLength(platformSecret, "utf8") >= 32, true);
+  assert.notEqual(
+    platformSecret,
+    configuration.apiEnvironment.IMS_BACKOFFICE_JWT_SECRET,
+  );
+  assert.notEqual(platformSecret, "production-platform-secret");
+}
+
 const r2TestEnvironment = Object.freeze({
   IMS_OBJECT_STORAGE: "s3",
   IMS_S3_BUCKET: "imsweb-media-public-test",
@@ -80,6 +91,11 @@ test("development configuration derives a fully local runtime", async () => {
       PATH: "/test/bin",
       IMS_ENV_FILE: "/production/api.env",
       IMS_SUPER_ADMIN_USERNAME: "production-admin",
+      IMS_PLATFORM_JWT_SECRET: "production-platform-secret",
+      IMS_FUDABA_PUBLIC_READ_ENABLED: "true",
+      IMS_FUDABA_WRITE_ENABLED: "true",
+      IMS_FUDABA_MAP_ENABLED: "true",
+      IMS_FUDABA_MAP_STYLE_URL: "https://production.invalid/style.json",
       DATABASE_URL: "postgresql://production.invalid/imsweb",
       AWS_SESSION_TOKEN: "production-session-token",
     },
@@ -111,6 +127,14 @@ test("development configuration derives a fully local runtime", async () => {
   assert.equal(configuration.apiEnvironment.IMS_PROJECT_ROOT, repositoryRoot);
   assert.equal("IMS_DATABASE" in configuration.apiEnvironment, false);
   assert.equal(configuration.apiEnvironment.IMS_OBJECT_STORAGE, "s3");
+  assertIsolatedPlatformSecret(configuration);
+  assert.equal(
+    configuration.apiEnvironment.IMS_FUDABA_PUBLIC_READ_ENABLED,
+    "false",
+  );
+  assert.equal(configuration.apiEnvironment.IMS_FUDABA_WRITE_ENABLED, "false");
+  assert.equal(configuration.apiEnvironment.IMS_FUDABA_MAP_ENABLED, "false");
+  assert.equal(configuration.apiEnvironment.IMS_FUDABA_MAP_STYLE_URL, "");
   assert.equal(
     configuration.apiEnvironment.IMS_S3_ENDPOINT,
     "http://127.0.0.1:9900",
@@ -132,12 +156,77 @@ test("development configuration derives a fully local runtime", async () => {
   );
 });
 
+test("development configuration translates explicit Fudaba gates", async () => {
+  const { parseArguments, resolveDevelopmentConfiguration } = await launcher;
+  const environment = {
+    IMS_DEV_FUDABA_PUBLIC_READ_ENABLED: " TRUE ",
+    IMS_DEV_FUDABA_WRITE_ENABLED: "true",
+    IMS_DEV_FUDABA_MAP_ENABLED: "true",
+    IMS_DEV_FUDABA_MAP_STYLE_URL: " /maps/exchange-style.json ",
+  };
+  const configuration = resolveDevelopmentConfiguration({
+    environment,
+    deployEnvironment: {},
+    options: parseArguments([], environment),
+  });
+
+  assert.equal(
+    configuration.apiEnvironment.IMS_FUDABA_PUBLIC_READ_ENABLED,
+    "true",
+  );
+  assert.equal(configuration.apiEnvironment.IMS_FUDABA_WRITE_ENABLED, "true");
+  assert.equal(configuration.apiEnvironment.IMS_FUDABA_MAP_ENABLED, "true");
+  assert.equal(
+    configuration.apiEnvironment.IMS_FUDABA_MAP_STYLE_URL,
+    "/maps/exchange-style.json",
+  );
+  for (const name of Object.keys(environment)) {
+    assert.equal(name in configuration.apiEnvironment, false);
+    assert.equal(name in configuration.webEnvironment, false);
+  }
+});
+
+test("development configuration rejects unsafe Fudaba overrides", async () => {
+  const { parseArguments, resolveDevelopmentConfiguration } = await launcher;
+  const resolve = (environment) =>
+    resolveDevelopmentConfiguration({
+      environment,
+      deployEnvironment: {},
+      options: parseArguments([], environment),
+    });
+
+  for (const name of [
+    "IMS_DEV_FUDABA_PUBLIC_READ_ENABLED",
+    "IMS_DEV_FUDABA_WRITE_ENABLED",
+    "IMS_DEV_FUDABA_MAP_ENABLED",
+  ]) {
+    assert.throws(() => resolve({ [name]: "yes" }), new RegExp(`${name} must`));
+  }
+  assert.throws(
+    () => resolve({ IMS_DEV_FUDABA_MAP_ENABLED: "true" }),
+    /IMS_DEV_FUDABA_MAP_STYLE_URL is required/,
+  );
+  for (const styleUrl of [
+    "https://tiles.example.com/style.json",
+    "//tiles.example.com/style.json",
+    "/maps/exchange-style.json?token=secret",
+    "/maps/exchange-style.json#fragment",
+  ]) {
+    assert.throws(
+      () => resolve({ IMS_DEV_FUDABA_MAP_STYLE_URL: styleUrl }),
+      /must be a same-origin absolute path/,
+    );
+  }
+});
+
 test("development configuration isolates an explicit R2 test runtime", async () => {
   const { parseArguments, resolveDevelopmentConfiguration } = await launcher;
   const configuration = resolveDevelopmentConfiguration({
     environment: {
       PATH: "/test/bin",
       IMS_SUPER_ADMIN_USERNAME: "production-admin",
+      IMS_BACKOFFICE_JWT_SECRET: "production-backoffice-secret",
+      IMS_PLATFORM_JWT_SECRET: "production-platform-secret",
       IMS_JWT_SECRET: "production-secret",
       DATABASE_URL: "postgresql://production.invalid/imsweb",
     },
@@ -166,9 +255,11 @@ test("development configuration isolates an explicit R2 test runtime", async () 
     "test-access-key",
   );
   assert.equal(
-    configuration.apiEnvironment.IMS_JWT_SECRET,
+    configuration.apiEnvironment.IMS_BACKOFFICE_JWT_SECRET,
     "imsweb-local-development-secret",
   );
+  assertIsolatedPlatformSecret(configuration);
+  assert.equal("IMS_JWT_SECRET" in configuration.apiEnvironment, false);
   assert.equal(
     configuration.apiEnvironment.DATABASE_URL.includes("127.0.0.1"),
     true,

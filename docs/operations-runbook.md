@@ -59,7 +59,9 @@ API 启动时会自动读取同一 workspace 下的 `apps/api/.env`，但 system
 
 | 变量 | 用途 | 要求 |
 | --- | --- | --- |
-| `IMS_JWT_SECRET` | JWT 签名密钥 | 必填，高熵随机值 |
+| `IMS_BACKOFFICE_JWT_SECRET` | Backoffice JWT 签名密钥 | 生产必填，至少 32 UTF-8 字节 |
+| `IMS_JWT_SECRET` | 上一版本 Backoffice JWT 签名密钥 | 只在滚动兼容/回滚窗口保留 |
+| `IMS_PLATFORM_JWT_SECRET` | Platform JWT 签名密钥 | 生产必填，至少 32 UTF-8 字节，且不得与当前或兼容期 Backoffice 密钥相同 |
 | `IMS_SUPER_ADMIN_USERNAME` | 最高管理员用户名 | 首次启用时填写一个现有 `op` 用户名 |
 | `NODE_ENV` | 运行模式 | 生产使用 `production` |
 | `HOST`、`PORT` | Hono 监听地址 | 建议 `127.0.0.1:3000` |
@@ -73,13 +75,49 @@ API 启动时会自动读取同一 workspace 下的 `apps/api/.env`，但 system
 | `IMS_STORY_DATA_DIR` | 剧情图片目录 | release 外绝对目录 |
 | `IMS_OBJECT_STORAGE` | 媒体存储 | `filesystem` 或 `s3` |
 
-管理员会话使用 15 分钟的 access JWT 和 30 天滑动有效期的 refresh token。两者都只写入
-`HttpOnly`、`SameSite=Lax` Cookie；refresh token 只保存 SHA-256 摘要，并在每次刷新时轮换。
-CSRF Cookie 保持脚本可读，用于 Alova 自动刷新和管理写请求的双提交校验。发布包含鉴权改动的
-版本前必须先运行 `pnpm run migration:postgresql`，确认
+管理员会话使用 15 分钟的 access JWT 和 30 天滑动有效期的 refresh token。access 与 refresh
+分别写入 `ims_admin_access`、`ims_admin_refresh` 两个 `HttpOnly`、`SameSite=Lax` Cookie；
+`ims_admin_csrf` 保持脚本可读，用于 Alova 自动刷新和管理写请求的双提交校验。refresh token
+只保存 SHA-256 摘要，并在每次刷新时轮换。管理端会话端点统一为
+`/api/admin/auth/login|session|refresh|logout`。发布包含鉴权改动的版本前必须先运行
+`pnpm run migration:postgresql`，确认
 `0010_admin_roles` 已写入 `ims_schema_migrations`。首次启用管理员角色时，将
 `IMS_SUPER_ADMIN_USERNAME` 设为一个现有 `op` 账号；服务会把该账号提升为唯一最高管理员。
 角色完成初始化后可以移除该变量，后续启动会从数据库确认最高管理员。
+
+Platform 会话独立使用 `ims_platform_access`、`ims_platform_refresh` 和
+`ims_platform_csrf`。其 access JWT 固定为 `iss=imsweb`、`aud=ims-platform`、
+`kind=platform`，每次请求同时检查帐号状态、`token_version` 和数据库中的 session family；
+退出后旧 access token 会立即失效。Platform refresh Cookie 只发送到
+`/api/platform/auth`，refresh token 与 CSRF secret 只以 SHA-256 摘要保存。刷新通过
+`/api/platform/auth/refresh` 完成 30 天滑动轮换；previous token 重放只撤销对应 family，
+不会影响同一帐号的其他设备或 Backoffice 会话。
+
+### Backoffice 会话滚动迁移
+
+从仍使用 `IMS_JWT_SECRET`、`token/refresh_token/csrf_token` 和旧 `/api/login` 等端点的版本升级时：
+
+1. 将 `IMS_BACKOFFICE_JWT_SECRET` 设置为当前 `IMS_JWT_SECRET` 的同一值，并保留
+   `IMS_JWT_SECRET`，确保新版本可严格签发新 realm claims，也可验证上一版本的旧 Cookie JWT。
+2. 部署后观察结构化日志 `event=legacy_backoffice_auth_route_used`；旧端点响应同时携带
+   `Deprecation: true`。旧登录、刷新和退出端点只为上一版本客户端维护旧名称 Cookie；旧端点
+   新签发的 JWT 仍包含新的 issuer、audience 和 kind。新端点只签发 `ims_admin_*`。
+3. 新中间件始终优先读取 `ims_admin_access`。只有读取旧 `token` Cookie 时才允许验证缺少 realm
+   claims 的上一版本 JWT；Authorization 和新 Cookie 始终执行严格 issuer、audience、kind 校验。
+   使用旧 refresh/CSRF Cookie 调用新的 `/api/admin/auth/refresh` 后只签发新的
+   `ims_admin_*` 会话；旧 `/api/refresh` 在兼容窗口内继续维护旧 Cookie。
+   新刷新端点升级成功后会主动清理旧 Cookie；新版 Web 在迁移前会回退读取旧 `csrf_token`，
+   因而升级前已登录的管理员无需强制重新登录。
+4. 旧 access JWT 最长还可存活 15 分钟。帐号删除、密钥轮换或普通代码回滚都不能即时撤回已经
+   签发的 access JWT；需要立即止损时应关闭入口或轮换 Backoffice 密钥，并接受全部管理员会话
+   在下一次请求/刷新时重新认证。
+5. 至少保留一个 30 天 refresh 周期且旧端点使用量归零后，独立提交删除旧路由、旧 Cookie 双读
+   和 `IMS_JWT_SECRET`。之后可以单独轮换 `IMS_BACKOFFICE_JWT_SECRET`。
+
+兼容窗口内回滚到上一版本时，继续保留 `IMS_JWT_SECRET`，上一版本将忽略新变量与
+`ims_admin_*` Cookie。管理员可能需要重新登录，但数据库中的 refresh session 和 Backoffice
+帐号不回滚、不删除。若 `IMS_PLATFORM_JWT_SECRET` 已配置，生产启动会拒绝它与当前
+`IMS_BACKOFFICE_JWT_SECRET` 或兼容期 `IMS_JWT_SECRET` 相同，避免两个帐号域共用签名边界。
 
 S3 模式还需要 `IMS_S3_BUCKET`、`IMS_S3_REGION` 及可选 endpoint/prefix。启用 CDN 读取时配置
 同一 bucket 的 `IMS_PUBLIC_READ_URL_BASE`，
@@ -204,8 +242,9 @@ test "$(readlink "$IMS_CURRENT_LINK")" = "$IMS_RELEASES_DIR/$PREVIOUS_RELEASE_ID
 ## 10. 故障定位
 
 - 入口层 `502`：检查入口日志、Hono 监听地址、当前 release 和应用日志。
-- JWT 登录失效：核对 `IMS_JWT_SECRET` 是否被错误轮换或注入，并确认 access JWT 过期后
-  `/api/refresh` 能读取未撤销的 `auth_refresh_sessions` 记录。
+- JWT 登录失效：核对 `IMS_BACKOFFICE_JWT_SECRET` 是否被错误轮换或注入；兼容窗口再核对旧
+  `IMS_JWT_SECRET`。确认 access JWT 过期后 `/api/admin/auth/refresh` 能读取未撤销的
+  `backoffice_refresh_sessions` 记录。
 - refresh 连续返回 `401`：检查 refresh Cookie 的 `/api` Path、CSRF header/cookie 是否一致，
   再检查会话是否过期、已登出撤销或因旧 refresh token 重放而整条会话被撤销。
 - PostgreSQL 就绪失败：检查连接预算、migration、锁等待和语句超时，再核对结构化数据库日志。

@@ -69,10 +69,26 @@ pnpm dev --api-port 3100 --web-port 5174
 ```
 
 启动器会把实际 API 地址传给 Web，并把实际 Web 地址传给 API，不需要手工同步两个 origin。
-本地数据库、对象存储和开发 JWT 配置由启动器注入，不需要先创建 `apps/api/.env`。统一入口
+本地数据库、对象存储和相互独立的 Backoffice/Platform 开发 JWT 配置由启动器注入，不需要
+先创建 `apps/api/.env`。统一入口
 设置空的 `IMS_ENV_FILE`，并在启动 API/Web 前移除继承的 `IMS_*`、数据库和 AWS 凭据，再只
 注入本地所需值；生产 `.env` 或 shell 配置不会污染本地 API。细粒度 API 入口仍按原契约读取
 `apps/api/.env`。
+
+统一启动器默认把 Fudaba 公开读取、写入和区域地图三个开关保持为 `false`。需要本地验证只读
+区域地图时，使用专用开发变量显式启用，并指向仓库内置的同源样式：
+
+```sh
+IMS_DEV_FUDABA_PUBLIC_READ_ENABLED=true \
+IMS_DEV_FUDABA_MAP_ENABLED=true \
+IMS_DEV_FUDABA_MAP_STYLE_URL=/maps/exchange-style.json \
+pnpm dev
+```
+
+只有测试已认证写操作时才另外设置 `IMS_DEV_FUDABA_WRITE_ENABLED=true`。启动器会严格校验这四个
+`IMS_DEV_*` 值，再转译为 API 的 `IMS_FUDABA_*` 配置；直接继承的生产开关仍会被清除。内置
+`exchange-style.json` 与 `/maps/china-provinces.json` 都由当前 Web origin 提供，不声明外部
+tile、glyph 或 sprite，因此地图底图不会发起第三方请求。
 
 需要在 API/Web 热更新期间使用 Cloudflare R2 测试桶时，使用显式入口：
 
@@ -112,6 +128,15 @@ pnpm dev
 API 独立启动时自动读取 `apps/api/.env`，已有 shell 或进程管理器变量优先；
 `migration:postgresql` 也读取同一文件。`apps/api/.env.example` 是生产和高级配置模板，不能在
 未填写必需值时原样用于开发。
+
+Platform 注册邮箱验证码在 `NODE_ENV=development` 且未设置
+`IMS_PLATFORM_EMAIL_DELIVERY` 时默认使用 `console`，只把验证码写入本地 API 日志。也可显式
+设置为 `disabled` 或 `console`；`disabled` 会让验证码发送不可用。生产环境禁止 `console`，
+上线时必须设置 `IMS_PLATFORM_EMAIL_DELIVERY=cloudflare`，并配置
+`IMS_CLOUDFLARE_EMAIL_ACCOUNT_ID`、`IMS_CLOUDFLARE_EMAIL_API_TOKEN`、
+`IMS_PLATFORM_EMAIL_FROM` 和 `IMS_PLATFORM_EMAIL_FROM_NAME`。Account ID 必须是 32 位十六进制
+值，API Token 属于密钥，发件地址必须来自已接入 Cloudflare Email Service 的发件域；不得把这些
+值提交到 Git。生产环境未配置时会退回 `disabled`，这不满足邮箱注册上线门禁。
 
 本地运行统一使用 PostgreSQL 与 S3 兼容的 RustFS。
 需要绕过统一启动器排障时，可以分别启动依赖：

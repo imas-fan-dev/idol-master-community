@@ -117,6 +117,10 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+      args:
+        DEBIAN_MIRROR_BASE: ${IMS_DEBIAN_MIRROR_BASE:-http://deb.debian.org}
+        NPM_REGISTRY: ${IMS_NPM_REGISTRY:-https://registry.npmmirror.com}
+        NODE_HEADERS_MIRROR: ${IMS_NODE_HEADERS_MIRROR:-https://npmmirror.com/mirrors/node}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -129,10 +133,21 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       IMS_ENV_FILE: ""
-      IMS_JWT_SECRET: ${IMS_JWT_SECRET:-imsweb-local-development-secret-change-before-sharing}
+      IMS_BACKOFFICE_JWT_SECRET: ${IMS_BACKOFFICE_JWT_SECRET-}
+      IMS_JWT_SECRET: ${IMS_JWT_SECRET-}
+      IMS_PLATFORM_JWT_SECRET: ${IMS_PLATFORM_JWT_SECRET-}
+      IMS_PLATFORM_EMAIL_DELIVERY: ${IMS_PLATFORM_EMAIL_DELIVERY-}
+      IMS_CLOUDFLARE_EMAIL_ACCOUNT_ID: ${IMS_CLOUDFLARE_EMAIL_ACCOUNT_ID-}
+      IMS_CLOUDFLARE_EMAIL_API_TOKEN: ${IMS_CLOUDFLARE_EMAIL_API_TOKEN-}
+      IMS_PLATFORM_EMAIL_FROM: ${IMS_PLATFORM_EMAIL_FROM-}
+      IMS_PLATFORM_EMAIL_FROM_NAME: ${IMS_PLATFORM_EMAIL_FROM_NAME:-IMSWeb}
       IMS_COOKIE_SECURE: ${IMS_COOKIE_SECURE:-false}
       IMS_SUPER_ADMIN_USERNAME: ${IMS_SUPER_ADMIN_USERNAME-}
       IMS_CLIENT_ADDRESS_SOURCE: ${IMS_CLIENT_ADDRESS_SOURCE:-direct}
+      IMS_FUDABA_PUBLIC_READ_ENABLED: ${IMS_FUDABA_PUBLIC_READ_ENABLED:-false}
+      IMS_FUDABA_WRITE_ENABLED: ${IMS_FUDABA_WRITE_ENABLED:-false}
+      IMS_FUDABA_MAP_ENABLED: ${IMS_FUDABA_MAP_ENABLED:-false}
+      IMS_FUDABA_MAP_STYLE_URL: ${IMS_FUDABA_MAP_STYLE_URL-}
       DATABASE_URL: ${IMS_API_DATABASE_URL:-postgresql://imsweb:imsweb-local-password@postgres:5432/imsweb}
       IMS_PG_POOL_MAX: ${IMS_PG_POOL_MAX:-10}
       IMS_PG_IDLE_TIMEOUT_MS: ${IMS_PG_IDLE_TIMEOUT_MS:-30000}

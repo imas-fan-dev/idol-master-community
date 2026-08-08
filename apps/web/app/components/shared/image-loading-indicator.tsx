@@ -16,7 +16,7 @@ function setImageLoadingState(
 ) {
   image.dataset.imageState = state
 
-  if (state === "loading") {
+  if (state === "loading" && image.getAttribute("alt") !== "") {
     image.setAttribute("aria-busy", "true")
     return
   }

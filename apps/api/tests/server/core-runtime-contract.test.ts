@@ -11,11 +11,11 @@ import { MemoryRateLimiter } from '@/infra/cache/memory/rate-limiter';
 import { PostgresqlSchemaStrategy } from '@/infra/db/postgresql/schema-strategy';
 import { SqlCoreRepository } from '@/infra/db/repositories/core-repository';
 import { executeSql, queryAll, queryOne } from '@/infra/db/sql/query';
-import { HmacTokenService } from '@/infra/security/hmac/token-service';
+import { HmacBackofficeTokenService } from '@/infra/security/hmac/token-service';
 import type { CompensationService } from '@/ports/object-storage';
 import type {
     AuditRepository,
-    AuthRepository,
+    BackofficeAuthRepository,
     EventRepository,
     NamecardRepository,
     NewsRepository,
@@ -211,7 +211,7 @@ async function createFixture(t: TestContext): Promise<NodeFixture> {
             const value = Reflect.get(target, property, receiver) as unknown;
             return typeof value === 'function' ? value.bind(target) : value;
         }
-    }) as AuthRepository & AuditRepository & NewsRepository & EventRepository &
+    }) as BackofficeAuthRepository & AuditRepository & NewsRepository & EventRepository &
         NamecardRepository & ReactionRepository;
     const compensation = new Proxy(compensationDelegate, {
         get(target, property, receiver) {
@@ -261,7 +261,7 @@ async function createFixture(t: TestContext): Promise<NodeFixture> {
         }
     }) as ObjectStorage;
     const runtime: RuntimeServices = {
-        auth: repository,
+        backofficeAuth: repository,
         audit: repository,
         news: repository,
         events: repository,
@@ -272,7 +272,7 @@ async function createFixture(t: TestContext): Promise<NodeFixture> {
         images,
         idempotency: new FilesystemIdempotencyStore(idempotencyDir),
         passwords: { async verify(value, digest) { return value === PASSWORD && digest === 'contract-digest'; } },
-        tokens: new HmacTokenService(SECRET),
+        backofficeTokens: new HmacBackofficeTokenService(SECRET),
         rateLimiter: limiter,
         uploads: parser,
         config: { cookieSecure: false, clientAddressSource: 'nginx' }

@@ -26,7 +26,24 @@ class ComposeDeploymentTests(unittest.TestCase):
         self.assertIn("rustfs-data:/data", compose)
         self.assertIn("image: ${IMS_API_IMAGE:-imsweb-api:local}", compose)
         self.assertIn("dockerfile: apps/api/Dockerfile", compose)
+        self.assertIn("DEBIAN_MIRROR_BASE: ${IMS_DEBIAN_MIRROR_BASE:-", compose)
+        self.assertIn(
+            "NPM_REGISTRY: ${IMS_NPM_REGISTRY:-https://registry.npmmirror.com}",
+            compose,
+        )
+        self.assertIn(
+            "NODE_HEADERS_MIRROR: ${IMS_NODE_HEADERS_MIRROR:-https://npmmirror.com/mirrors/node}",
+            compose,
+        )
         self.assertIn('127.0.0.1:${IMS_API_PORT:-3000}:3000', compose)
+        self.assertIn(
+            "IMS_BACKOFFICE_JWT_SECRET: ${IMS_BACKOFFICE_JWT_SECRET-}",
+            compose,
+        )
+        self.assertNotIn(
+            "IMS_BACKOFFICE_JWT_SECRET:-imsweb-local-development-secret",
+            compose,
+        )
         self.assertIn("condition: service_completed_successfully", compose)
         self.assertIn("required: false", compose)
         self.assertIn("node apps/api/scripts/migration/postgres-migrations.js", compose)
@@ -53,8 +70,17 @@ class ComposeDeploymentTests(unittest.TestCase):
 
     def test_api_image_is_a_non_root_production_build(self):
         dockerfile = API_DOCKERFILE_PATH.read_text(encoding="utf-8")
+        dependency_build_stage = dockerfile.split(
+            "FROM pnpm-base AS build", maxsplit=1
+        )[0]
 
         self.assertIn("ARG NODE_VERSION=24.18.0", dockerfile)
+        self.assertEqual(dockerfile.count("ARG NPM_REGISTRY="), 2)
+        self.assertEqual(dockerfile.count("ENV COREPACK_NPM_REGISTRY="), 2)
+        self.assertIn(
+            "ENV npm_config_disturl=${NODE_HEADERS_MIRROR}",
+            dependency_build_stage,
+        )
         self.assertIn("pnpm run build", dockerfile)
         self.assertIn(
             "pnpm install --offline --frozen-lockfile --prod --filter @imsweb/api...",

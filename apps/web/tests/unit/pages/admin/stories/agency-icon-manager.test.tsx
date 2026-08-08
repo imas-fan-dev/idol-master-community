@@ -56,7 +56,7 @@ function catalogPayload(iconUrl: string | null) {
 
 describe("AgencyIconManager", () => {
   beforeEach(() => {
-    document.cookie = "csrf_token=wiki-agency-icon-test; path=/"
+    document.cookie = "ims_admin_csrf=wiki-agency-icon-test; path=/"
   })
 
   afterEach(() => {

@@ -30,7 +30,7 @@ test('homepage links are database-backed and reorder only complete section inven
     const app = createHonoApp(() => ({
         homepageLinks: repository,
         audit: repository,
-        tokens: {
+        backofficeTokens: {
             sign: async () => 'op-token',
             verify: async () => ({
                 id: 1,

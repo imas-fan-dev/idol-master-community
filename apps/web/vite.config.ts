@@ -8,6 +8,16 @@ const honoOrigin = process.env.IMS_API_ORIGIN ?? "http://127.0.0.1:3000"
 const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url))
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        assetFileNames: (assetInfo) =>
+          assetInfo.names.some((name) => name.endsWith(".mjs"))
+            ? "assets/[name]-[hash].js"
+            : "assets/[name]-[hash][extname]",
+      },
+    },
+  },
   resolve: {
     tsconfigPaths: true,
     dedupe: ["react", "react-dom"],

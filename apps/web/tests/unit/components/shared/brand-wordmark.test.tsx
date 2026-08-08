@@ -12,4 +12,11 @@ describe("BrandWordmark", () => {
     expect(logo).toHaveAttribute("width", "545")
     expect(logo).toHaveAttribute("height", "188")
   })
+
+  it("can be decorative when its parent already names the destination", () => {
+    const { container } = render(<BrandWordmark alt="" />)
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(container.querySelector("img")).toHaveAttribute("alt", "")
+  })
 })

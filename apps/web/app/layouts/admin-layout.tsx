@@ -12,6 +12,7 @@ import {
   LoaderCircleIcon,
   LogInIcon,
   LogOutIcon,
+  MapPinCheckIcon,
   MapPinnedIcon,
   MegaphoneIcon,
   NewspaperIcon,
@@ -92,6 +93,13 @@ const navigation: Array<{
     description: "地区资料与社群名录",
     icon: MapPinnedIcon,
     accent: "bg-franchise-sidem",
+  },
+  {
+    to: "/admin/community/exchange",
+    label: "事务所位置",
+    description: "公开区域位置审核",
+    icon: MapPinCheckIcon,
+    accent: "bg-franchise-ml",
   },
   {
     to: "/admin/recommendations",

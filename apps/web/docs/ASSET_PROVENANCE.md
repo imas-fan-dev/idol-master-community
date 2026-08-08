@@ -64,6 +64,34 @@ subsample 参数生成，作为浏览器默认交付版本；原始 PNG 继续�
 `9cda55e6d140050e2bc8a637cda6fa6e6d12596611e1d58bb706cd96c1cac076`。本次书面授权范围限于
 IMSWeb 公开 Web 的 Wiki 视图切换入口，不自动扩展到其他用途或再许可。
 
+## 地图数据与样式
+
+`public/maps/exchange-style.json` 是 2026-08-03 从 OpenFreeMap 官方 Bright style 地址
+`https://tiles.openfreemap.org/styles/bright` 获取的原始响应稳定副本，未修改 JSON 字节；
+获取时官方响应的 `Last-Modified` 为 2026-08-02 22:00:41 GMT。当前 SHA-256 为
+`ada317e9b31c65b726dc46a2b3b14acb9856782051a09e3f4bc92d034373999f`。OpenFreeMap
+styles 仓库整体采用 MIT 许可证；其随附许可清单同时注明 Bright 上游代码采用 BSD-3-Clause、
+设计采用 CC BY 4.0，字体、图标与 Natural Earth 数据分别保留各自许可。IMSWeb 仅保存 style
+JSON；冷灰、浅蓝配色在运行时通过 MapLibre paint property 覆盖，不修改此稳定副本。
+
+该 style 会在浏览器运行时向 `https://tiles.openfreemap.org` 请求 OpenFreeMap planet
+TileJSON 与矢量瓦片、Natural Earth raster、sprite 和 Noto Sans glyph。地图请求白名单只允许
+当前站点 origin 与该主机的 HTTPS 默认端口，不允许其他第三方主机、HTTP 或非默认端口。
+OpenFreeMap planet TileJSON 提供常驻署名：OpenFreeMap、OpenMapTiles，以及
+`Data from OpenStreetMap`；Web 端使用非 compact 的 MapLibre attribution control 在地图左下角
+显示该署名。OpenStreetMap 数据的版权和许可说明以
+`https://www.openstreetmap.org/copyright` 为准，使用与再分发时不得移除署名。
+
+`public/maps/china-provinces.json` 于 2026-07-26 从阿里云 DataV GeoAtlas 的公开接口
+`https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json` 获取，并在提交 `ed34551`
+中由仓库维护者加入公开 Producer Map；当前交换地图仅复用该既有文件，未再次下载或修改。
+历史处理移除了 `100000_JD` 插图以及海南远端南海岛屿多边形，当前 SHA-256 为
+`e5dfb9afc4ab94ea5ea09208397c4c000646db0c8bb2706207ca49bbc63b9017`。阿里云官方文档允许从
+DataV GeoAtlas 导出或下载行政区 GeoJSON 用于地图配置，但未为该数据单独声明 MIT
+再分发许可；因此该文件不标记为 MIT，其公开部署与再分发继续受阿里云条款及仓库维护者既有
+授权范围约束。交换地图切换到上述 OpenFreeMap 全球底图后已不再引用此文件；Producer Map
+仍可能继续使用它。
+
 ## 新增资产要求
 
 新增静态资产必须满足以下条件：

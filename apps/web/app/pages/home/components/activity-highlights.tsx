@@ -37,6 +37,7 @@ export function ActivityHighlights() {
         {loading ? (
           <div
             className="grid grid-cols-2 gap-4 lg:grid-cols-3"
+            role="status"
             aria-label="正在加载活动资讯"
           >
             {[0, 1, 2].map((item) => (

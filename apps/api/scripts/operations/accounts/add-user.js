@@ -10,18 +10,26 @@ function databaseUrl(environment = process.env) {
     } catch {
         throw new Error('DATABASE_URL must be a valid PostgreSQL URL');
     }
-    if (!['postgres:', 'postgresql:'].includes(parsed.protocol) ||
-        !parsed.hostname || parsed.pathname === '/') {
+    if (
+        !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
+        !parsed.hostname ||
+        parsed.pathname === '/'
+    ) {
         throw new Error('DATABASE_URL must be a valid PostgreSQL URL');
     }
     return value;
 }
 
-async function addUser() {
-    const username = process.env.IMS_NEW_USER_USERNAME;
-    const password = process.env.IMS_NEW_USER_PASSWORD;
-    const dept = process.env.IMS_NEW_USER_DEPT || 'editor';
-    const producername = process.env.IMS_NEW_USER_PRODUCER_NAME;
+async function addUser({
+    environment = process.env,
+    PoolClass = Pool,
+    hashPassword = bcrypt.hash,
+    logger = console
+} = {}) {
+    const username = environment.IMS_NEW_USER_USERNAME;
+    const password = environment.IMS_NEW_USER_PASSWORD;
+    const dept = environment.IMS_NEW_USER_DEPT || 'editor';
+    const producername = environment.IMS_NEW_USER_PRODUCER_NAME;
 
     if (!username || !password || !producername) {
         throw new Error(
@@ -32,33 +40,43 @@ async function addUser() {
         throw new Error('IMS_NEW_USER_DEPT must be either editor or op.');
     }
 
-    const connectionString = databaseUrl();
-    const pool = new Pool({ connectionString, application_name: 'imsweb-ops-add-user' });
+    const connectionString = databaseUrl(environment);
+    const pool = new PoolClass({
+        connectionString,
+        application_name: 'imsweb-ops-add-user'
+    });
     try {
-        const hashed = await bcrypt.hash(password, 12);
+        const hashed = await hashPassword(password, 12);
         const result = await pool.query(
-            `INSERT INTO users (username, password, dept, producername, admin_role)
+            `INSERT INTO backoffice_accounts
+                (username, password, dept, producername, admin_role)
              VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (username) DO NOTHING
              RETURNING id`,
             [username, hashed, dept, producername, dept === 'op' ? 'admin' : null]
         );
         if (result.rowCount === 0) {
-            console.error(`Username ${username} already exists.`);
-            process.exitCode = 1;
-        } else {
-            console.log(`User created with ID ${result.rows[0].id}.`);
+            logger.error(`Username ${username} already exists.`);
+            return { created: false, id: null };
         }
+
+        const id = result.rows[0].id;
+        logger.log(`User created with ID ${id}.`);
+        return { created: true, id };
     } finally {
         await pool.end();
     }
 }
 
 if (require.main === module) {
-    addUser().catch((err) => {
-        console.error(err.message);
-        process.exitCode = 1;
-    });
+    addUser()
+        .then(({ created }) => {
+            if (!created) process.exitCode = 1;
+        })
+        .catch((err) => {
+            console.error(err.message);
+            process.exitCode = 1;
+        });
 }
 
-module.exports = { databaseUrl };
+module.exports = { addUser, databaseUrl };

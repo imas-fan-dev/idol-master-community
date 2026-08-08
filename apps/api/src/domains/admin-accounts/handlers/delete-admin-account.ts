@@ -1,15 +1,18 @@
 import type { Context } from 'hono';
 import type { AppEnvironment } from '@/app';
 import { writeAudit } from '@/domains/audit/hono-service';
-import { adminAccountRepository, authRepository } from '@/middleware/hono-context';
+import {
+    adminAccountRepository,
+    backofficeAuthRepository
+} from '@/middleware/hono-context';
 
 export async function handleDeleteAdminAccount(c: Context<AppEnvironment>): Promise<Response> {
     const id = Number(c.req.param('id'));
     if (!Number.isSafeInteger(id) || id <= 0) {
         return c.json({ success: false, message: '管理员账号 ID 无效' }, 400);
     }
-    const actor = c.get('user')!;
-    const target = await authRepository(c).findUserById(id);
+    const actor = c.get('backofficeUser')!;
+    const target = await backofficeAuthRepository(c).findUserById(id);
     if (!target || target.dept !== 'op') {
         return c.json({ success: false, message: '管理员账号不存在' }, 404);
     }
@@ -19,7 +22,14 @@ export async function handleDeleteAdminAccount(c: Context<AppEnvironment>): Prom
     if (target.admin_role === 'super_admin') {
         return c.json({ success: false, message: '不能删除最高管理员' }, 409);
     }
-    if (!await adminAccountRepository(c).deleteAdminAccount(id)) {
+    const deletion = await adminAccountRepository(c).deleteAdminAccount(id);
+    if (deletion === 'moderation-history') {
+        return c.json({
+            success: false,
+            message: '该管理员已有 Fudaba 审核记录，不能删除'
+        }, 409);
+    }
+    if (deletion !== 'deleted') {
         return c.json({ success: false, message: '管理员账号状态已发生变化' }, 409);
     }
     await writeAudit(c, '删除管理员', target.username);

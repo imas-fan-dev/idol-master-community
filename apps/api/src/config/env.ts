@@ -20,6 +20,7 @@ if (!['development', 'test', 'production'].includes(runtimeEnvironment)) {
 export const RUNTIME_ENV = runtimeEnvironment as RuntimeEnvironment;
 export const IS_PRODUCTION = RUNTIME_ENV === 'production';
 const DEVELOPMENT_SECRET = 'dev-only-insecure-change-me';
+const DEVELOPMENT_PLATFORM_SECRET = 'dev-only-insecure-platform-secret-change-me';
 const DEFAULT_STORY_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DEFAULT_SITE_PACKAGE_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -55,24 +56,115 @@ function envFlag(name: string, fallback: boolean): boolean {
     return !['0', 'false', 'no', 'off'].includes(value.toLowerCase());
 }
 
-function getJwtSecret(): string {
-    const configuredSecret = process.env.IMS_JWT_SECRET;
-    if (configuredSecret) {
-        if (IS_PRODUCTION && Buffer.byteLength(configuredSecret, 'utf8') < 32) {
-            throw new Error('IMS_JWT_SECRET must be at least 32 UTF-8 bytes in production');
-        }
-        return configuredSecret;
-    }
-    if (IS_PRODUCTION) {
-        throw new Error('IMS_JWT_SECRET is required when NODE_ENV=production');
-    }
-    console.warn(
-        '[SECURITY WARNING] IMS_JWT_SECRET is not set; using an insecure development-only secret.'
-    );
-    return DEVELOPMENT_SECRET;
+export interface BackofficeJwtSecretConfig {
+    secret: string;
+    legacySecret?: string;
 }
 
-export const SECRET_KEY = getJwtSecret();
+export function parseBackofficeJwtSecrets(
+    environment: NodeJS.ProcessEnv = process.env
+): BackofficeJwtSecretConfig {
+    const mode = String(environment.NODE_ENV || 'development').trim().toLowerCase();
+    const production = mode === 'production';
+    const configuredSecret = environment.IMS_BACKOFFICE_JWT_SECRET;
+    const legacySecret = environment.IMS_JWT_SECRET;
+    const platformSecret = environment.IMS_PLATFORM_JWT_SECRET;
+
+    if (production) {
+        if (!configuredSecret) {
+            throw new Error(
+                'IMS_BACKOFFICE_JWT_SECRET is required in production and must be at least ' +
+                '32 UTF-8 bytes; legacy IMS_JWT_SECRET is required only during the ' +
+                'Backoffice compatibility window'
+            );
+        }
+        if (Buffer.byteLength(configuredSecret, 'utf8') < 32) {
+            throw new Error(
+                'IMS_BACKOFFICE_JWT_SECRET must be at least 32 UTF-8 bytes in production'
+            );
+        }
+        if (legacySecret && Buffer.byteLength(legacySecret, 'utf8') < 32) {
+            throw new Error(
+                'IMS_JWT_SECRET must be at least 32 UTF-8 bytes in production while ' +
+                'legacy Backoffice verification is enabled'
+            );
+        }
+        if (
+            platformSecret &&
+            (configuredSecret === platformSecret || legacySecret === platformSecret)
+        ) {
+            throw new Error(
+                'Backoffice JWT verification secrets and IMS_PLATFORM_JWT_SECRET must be ' +
+                'different in production'
+            );
+        }
+        return {
+            secret: configuredSecret,
+            ...(legacySecret ? { legacySecret } : {})
+        };
+    }
+
+    if (configuredSecret) {
+        return {
+            secret: configuredSecret,
+            ...(legacySecret ? { legacySecret } : {})
+        };
+    }
+    if (legacySecret) {
+        console.warn(
+            '[SECURITY WARNING] IMS_JWT_SECRET is deprecated; set ' +
+            'IMS_BACKOFFICE_JWT_SECRET instead.'
+        );
+        return { secret: legacySecret, legacySecret };
+    }
+    console.warn(
+        '[SECURITY WARNING] IMS_BACKOFFICE_JWT_SECRET is not set; using an insecure ' +
+        'development-only secret.'
+    );
+    return { secret: DEVELOPMENT_SECRET };
+}
+
+export function parsePlatformJwtSecret(
+    environment: NodeJS.ProcessEnv = process.env
+): string {
+    const mode = String(environment.NODE_ENV || 'development').trim().toLowerCase();
+    const production = mode === 'production';
+    const platformSecret = environment.IMS_PLATFORM_JWT_SECRET;
+    if (production) {
+        if (!platformSecret) {
+            throw new Error(
+                'IMS_PLATFORM_JWT_SECRET is required in production and must be at least ' +
+                '32 UTF-8 bytes'
+            );
+        }
+        if (Buffer.byteLength(platformSecret, 'utf8') < 32) {
+            throw new Error(
+                'IMS_PLATFORM_JWT_SECRET must be at least 32 UTF-8 bytes in production'
+            );
+        }
+        if (
+            platformSecret === environment.IMS_BACKOFFICE_JWT_SECRET ||
+            platformSecret === environment.IMS_JWT_SECRET
+        ) {
+            throw new Error(
+                'IMS_PLATFORM_JWT_SECRET must be different from all Backoffice JWT ' +
+                'verification secrets in production'
+            );
+        }
+        return platformSecret;
+    }
+    if (platformSecret) return platformSecret;
+    console.warn(
+        '[SECURITY WARNING] IMS_PLATFORM_JWT_SECRET is not set; using an insecure ' +
+        'development-only Platform secret.'
+    );
+    return DEVELOPMENT_PLATFORM_SECRET;
+}
+
+const backofficeJwtSecrets = parseBackofficeJwtSecrets();
+export const BACKOFFICE_JWT_SECRET = backofficeJwtSecrets.secret;
+export const LEGACY_BACKOFFICE_JWT_SECRET = backofficeJwtSecrets.legacySecret;
+export const PLATFORM_JWT_SECRET = parsePlatformJwtSecret();
 export const STORY_MAX_UPLOAD_BYTES = parseStoryMaxUploadBytes(
     process.env.IMS_STORY_MAX_UPLOAD_BYTES
 );
@@ -103,9 +195,86 @@ export function parseClientAddressSource(
     return source;
 }
 
+export function parseFudabaPublicReadEnabled(value: string | undefined): boolean {
+    const normalized = value?.trim().toLowerCase();
+    if (!normalized) return false;
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    throw new Error('IMS_FUDABA_PUBLIC_READ_ENABLED must be true or false');
+}
+
+export function parseFudabaWriteEnabled(value: string | undefined): boolean {
+    const normalized = value?.trim().toLowerCase();
+    if (!normalized) return false;
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    throw new Error('IMS_FUDABA_WRITE_ENABLED must be true or false');
+}
+
+export interface FudabaMapConfig {
+    enabled: boolean;
+    styleUrl: string;
+}
+
+export function parseFudabaMapEnabled(value: string | undefined): boolean {
+    const normalized = value?.trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    throw new Error('IMS_FUDABA_MAP_ENABLED must be true or false');
+}
+
+export function parseFudabaMapStyleUrl(value: string | undefined): string {
+    if (value === undefined || value === '') return '';
+    if (/[\0-\x1f\x7f]/.test(value)) {
+        throw new Error(
+            'IMS_FUDABA_MAP_STYLE_URL must be a same-origin absolute path ' +
+            'without query or hash'
+        );
+    }
+    const normalized = value.trim();
+    if (!normalized) return '';
+    if (
+        normalized.length > 2048 ||
+        !normalized.startsWith('/') ||
+        normalized.includes('//') ||
+        normalized.includes('\\') ||
+        normalized.includes('?') ||
+        normalized.includes('#')
+    ) {
+        throw new Error(
+            'IMS_FUDABA_MAP_STYLE_URL must be a same-origin absolute path ' +
+            'without query or hash'
+        );
+    }
+    return normalized;
+}
+
+export function parseFudabaMapConfig(
+    environment: NodeJS.ProcessEnv = process.env
+): FudabaMapConfig {
+    const enabled = parseFudabaMapEnabled(environment.IMS_FUDABA_MAP_ENABLED);
+    const styleUrl = parseFudabaMapStyleUrl(environment.IMS_FUDABA_MAP_STYLE_URL);
+    if (enabled && !styleUrl) {
+        throw new Error(
+            'IMS_FUDABA_MAP_STYLE_URL is required when IMS_FUDABA_MAP_ENABLED=true'
+        );
+    }
+    return { enabled, styleUrl };
+}
+
 export const CLIENT_ADDRESS_SOURCE = parseClientAddressSource(
     process.env.IMS_CLIENT_ADDRESS_SOURCE
 );
+export const FUDABA_PUBLIC_READ_ENABLED = parseFudabaPublicReadEnabled(
+    process.env.IMS_FUDABA_PUBLIC_READ_ENABLED
+);
+export const FUDABA_WRITE_ENABLED = parseFudabaWriteEnabled(
+    process.env.IMS_FUDABA_WRITE_ENABLED
+);
+export const FUDABA_MAP_CONFIG = parseFudabaMapConfig();
+export const FUDABA_MAP_ENABLED = FUDABA_MAP_CONFIG.enabled;
+export const FUDABA_MAP_STYLE_URL = FUDABA_MAP_CONFIG.styleUrl;
 const COOKIE_SECURE = envFlag('IMS_COOKIE_SECURE', IS_PRODUCTION);
 
 export const COOKIE_OPTIONS: CookieOptions = {

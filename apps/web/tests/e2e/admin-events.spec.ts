@@ -4,7 +4,7 @@ const longTitle =
   "【广O无料配送】交流站做了一些小偶像的钥匙扣物料，到时候会在广州 only 发，有喜欢的到时候可以找梦想之边拿。因为制作时间紧张，目前还没有成品照片。"
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/check", async (route) => {
+  await page.route("**/api/admin/auth/session", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
